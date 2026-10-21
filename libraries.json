@@ -1,0 +1,15 @@
+{
+  "libs": [
+    {
+      "name": "FastLED@3.10.8",
+      "version": "3.10.8",
+      "url": "https://github.com/FastLED/FastLED"
+    },
+    {
+      "name": "ESP-Wifi-Config@2.2.6",
+      "version": "2.2.6",
+      "url": "https://github.com/tabahi/ESP-Wifi-Config",
+      "note": "vendored in lib/ESP-Wifi-Config (pinned tag v2.2.6)"
+    }
+  ]
+}
