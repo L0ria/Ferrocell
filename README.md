@@ -5,11 +5,12 @@ in a ferrocell (a device that visualizes magnetic fields). The ESP32 exists
 solely to control the strip's color so the field visualization can be changed
 at runtime.
 
-> Status: **M2 — pure color/LED core** (issue #3) on top of the M1 scaffold
-> (issue #2). The firmware boots, prints over USB-CDC, and holds the strip
-> data pin LOW. The class-based application (color engine, LED controller,
-> WiFi, web UI) lands in M3–M5 (issues #4–#6); the full test harness + CI in
-> M6 (issue #7).
+> Status: **M3 — hardware layer** (issue #4) on top of the M2 pure core
+> (issue #3) and the M1 scaffold (issue #2). The firmware boots over USB-CDC,
+> loads settings (NVS; sane defaults on first boot), attaches the WS2812B
+> strip on GPIO7 via FastLED, and renders frames from the `ColorEngine`.
+> WiFi (`WifiManager`) and the web UI (`UiServer`) land in M4–M5 (issues
+> #5–#6); the full test harness + CI in M6 (issue #7).
 
 ## Hardware
 
@@ -58,14 +59,30 @@ hardware dependencies**, implemented as classes (object-oriented, modular):
 |---|---|---|
 | `ferrocell::Color` | `ferrocell/src/core/Color.{h,cpp}` | HSV value type; `toRgb()` (HSV→RGB), clamping, small helpers |
 | `ferrocell::ColorEngine` | `ferrocell/src/core/ColorEngine.{h,cpp}` | Pure per-LED color generator for modes `SOLID` / `RAINBOW` / `BREATHING` / `GRADIENT` / `OFF`; time is **injected** (`timeMs`) so it is deterministic |
+| `ferrocell::Settings` | `ferrocell/src/core/Settings.{h,cpp}` | User-config value type (ledCount, hue, brightness, mode, speed); `defaults()` + `normalize()` (clamping/wrapping) |
 
 Because the core has zero hardware dependencies it compiles and runs on the
 host with plain `g++ -std=c++17`, which is what the unit tests target.
 
+### Hardware layer (M3, firmware-only)
+
+These classes wrap the hardware and are compiled into the firmware (not part
+of the host test harness). They delegate all color math to the pure core.
+
+| Class | File | Responsibility |
+|---|---|---|
+| `LedController` | `ferrocell/src/hw/LedController.{h,cpp}` | The only class that talks to FastLED; owns the WS2812B strip on GPIO7 + the LED count; `render()` delegates per-LED colors to `ColorEngine` (no color math here) |
+| `ConfigStore` | `ferrocell/src/hw/ConfigStore.{h,cpp}` | The single persistence point over `Preferences` (NVS); `load()` (sane defaults on first boot), `save()`, `setLedCount()` (save + `ESP.restart()`), `reset()` |
+
+`ferrocell.ino` stays the thin `setup()`/`loop()` entrypoint (composition
+root): it loads settings, attaches the strip, and renders frames.
+
 ### Running the core tests (no Arduino, no hardware)
 
 ```bash
-tests/run_tests.sh          # build + run the pure-core unit tests
+tests/run_tests.sh          # build + run all pure-core unit tests
+                            #   (core_test: Color + ColorEngine;
+                            #    settings_test: Settings defaults/normalize)
 ```
 
 This is the same command the `core-tests` CI job runs on every PR.
@@ -78,13 +95,19 @@ This is the same command the `core-tests` CI job runs on every PR.
 ├── ferrocell/
 │   ├── ferrocell.ino     # thin setup()/loop() entrypoint (M1 boot sketch)
 │   ├── sketch.yaml       # IDE 2.x project record (FQBN + core + lib pins)
-│   └── src/core/         # pure, host-testable core (Color + ColorEngine)
-│       ├── Color.{h,cpp}
-│       └── ColorEngine.{h,cpp}
+│   └── src/
+│       ├── core/         # pure, host-testable core (no Arduino/FastLED)
+│       │   ├── Color.{h,cpp}
+│       │   ├── ColorEngine.{h,cpp}
+│       │   └── Settings.{h,cpp}
+│       └── hw/           # hardware wrappers (firmware-only)
+│           ├── LedController.{h,cpp}
+│           └── ConfigStore.{h,cpp}
 ├── lib/
 │   └── ESP-Wifi-Config/  # vendored @ v2.2.6 (tabahi/ESP-Wifi-Config)
 ├── tests/
 │   ├── core_test.cpp     # pure-core unit tests (Color + ColorEngine)
+│   ├── settings_test.cpp # Settings defaults + normalize/clamping (M3)
 │   └── run_tests.sh      # host test runner (g++ -std=c++17, no Arduino)
 ├── web/                  # UI assets (M5, issue #6)
 ├── tests/                # host-side test harness (M6, issue #7)
@@ -110,7 +133,7 @@ This is the same command the `core-tests` CI job runs on every PR.
 |---|---|---|
 | M1 | #2 | Scaffold, build system, project config (this PR) |
 | M2 | #3 | Pure core: `Color` + `ColorEngine` (host-testable, no Arduino deps) |
-| M3 | #4 | Hardware layer: `LedController` + `ConfigStore` |
+| M3 | #4 | Hardware layer: `LedController` + `ConfigStore` (this PR) |
 | M4 | #5 | WiFi: `WifiManager` (AP + STA) |
 | M5 | #6 | Web UI (color wheel) + JSON API: `UiServer` |
 | M6 | #7 | Test harness + full CI (3 jobs) + docs |

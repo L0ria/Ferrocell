@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Ferrocell — host-side test runner (M2, issue #3).
+# Ferrocell — host-side test runner (M2 issue #3, M3 issue #4).
 #
-# Builds and runs the PURE-core unit tests (Color + ColorEngine) with the
-# system g++ — NO Arduino toolchain, NO hardware. This is the same command
-# the M6 CI job will run.
+# Builds and runs the PURE-core unit tests with the system g++ — NO Arduino
+# toolchain, NO FastLED, NO hardware. This is the same command the M6 CI
+# `core-tests` job runs.
+#
+# Test targets (each is a self-contained binary with its own main()):
+#   core_test      Color + ColorEngine   (M2)
+#   settings_test  Settings defaults + normalize/clamping (M3)
+#
+# All test binaries link against the pure core sources (Color, ColorEngine,
+# Settings) which have zero hardware dependencies.
 #
 # Usage:
-#   tests/run_tests.sh            # build + run the core tests
-#   tests/run_tests.sh --keep     # keep the compiled binary (./build/core_test)
+#   tests/run_tests.sh            # build + run all core tests
+#   tests/run_tests.sh --keep     # keep the compiled binaries (./build/*)
 #
 # Exit code: 0 if all tests pass, non-zero otherwise (CI-friendly).
 # ---------------------------------------------------------------------------
@@ -23,24 +30,51 @@ OUT_DIR="${ROOT}/build"
 KEEP=0
 [ "${1:-}" = "--keep" ] && KEEP=1
 
-BIN="${OUT_DIR}/core_test"
+# Pure core sources (no Arduino/FastLED) — linked into every test binary.
+CORE_SRCS=(
+  "${ROOT}/ferrocell/src/core/Color.cpp"
+  "${ROOT}/ferrocell/src/core/ColorEngine.cpp"
+  "${ROOT}/ferrocell/src/core/Settings.cpp"
+)
+
+# Test files to build + run (each has its own main()).
+TESTS=(
+  "core_test"
+  "settings_test"
+)
+
 mkdir -p "${OUT_DIR}"
-
 echo "[tests] compiler : ${CXX} ($(${CXX} --version 2>/dev/null | head -1))"
-echo "[tests] building : ${BIN}"
-"${CXX}" ${CXXFLAGS} -I "${ROOT}/ferrocell/src" \
-  "${ROOT}/tests/core_test.cpp" \
-  "${ROOT}/ferrocell/src/core/Color.cpp" \
-  "${ROOT}/ferrocell/src/core/ColorEngine.cpp" \
-  -o "${BIN}"
 
-echo "[tests] running  : ${BIN}"
-if [ "${KEEP}" -eq 0 ]; then
-  # Run from a neutral cwd; clean up the binary afterwards.
+overall_rc=0
+for t in "${TESTS[@]}"; do
+  BIN="${OUT_DIR}/${t}"
+  echo "[tests] building : ${BIN}"
+  "${CXX}" ${CXXFLAGS} -I "${ROOT}/ferrocell/src" \
+    "${ROOT}/tests/${t}.cpp" \
+    "${CORE_SRCS[@]}" \
+    -o "${BIN}"
+
+  echo "[tests] running  : ${BIN}"
+  # Run the test binary, capturing its exit code. `set -e` is suspended for
+  # the run so a failing test does not abort the whole harness — we want every
+  # test to run and the overall result reported at the end.
+  set +e
   ( cd "${ROOT}" && "${BIN}" )
   rc=$?
-  rm -f "${BIN}"
-  exit "${rc}"
+  set -e
+  echo "[tests] ${t}: rc=${rc}"
+  if [ "${rc}" -ne 0 ]; then
+    overall_rc=${rc}
+  fi
+  if [ "${KEEP}" -eq 0 ]; then
+    rm -f "${BIN}"
+  fi
+done
+
+if [ "${overall_rc}" -eq 0 ]; then
+  echo "[tests] ALL PASS"
 else
-  ( cd "${ROOT}" && "${BIN}" )
+  echo "[tests] FAILURES (rc=${overall_rc})"
 fi
+exit "${overall_rc}"

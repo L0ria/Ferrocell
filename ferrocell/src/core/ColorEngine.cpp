@@ -84,25 +84,25 @@ bool ColorEngine::isKnownMode(const char* modeName) {
          iequals(modeName, "off");
 }
 
-std::vector<Color> ColorEngine::colors(double hue,
-                                       double brightness,
-                                       std::size_t ledCount,
-                                       double speed,
-                                       std::int64_t timeMs) const {
-  std::vector<Color> out;
-  if (ledCount == 0) return out;
-  out.reserve(ledCount);
+void ColorEngine::colors(double hue,
+                         double brightness,
+                         std::size_t ledCount,
+                         double speed,
+                         std::int64_t timeMs,
+                         std::vector<Color>& out) const {
+  out.clear();
+  if (ledCount == 0) return;
+  out.resize(ledCount);
 
   const double t = static_cast<double>(timeMs) / 1000.0;
 
   switch (mode_) {
     case Mode::OFF:
-      for (std::size_t i = 0; i < ledCount; ++i) out.emplace_back(0.0, 0.0, 0.0);
+      for (std::size_t i = 0; i < ledCount; ++i) out[i] = Color(0.0, 0.0, 0.0);
       break;
 
     case Mode::SOLID:
-      for (std::size_t i = 0; i < ledCount; ++i)
-        out.emplace_back(hue, 1.0, brightness);
+      for (std::size_t i = 0; i < ledCount; ++i) out[i] = Color(hue, 1.0, brightness);
       break;
 
     case Mode::RAINBOW:
@@ -112,7 +112,7 @@ std::vector<Color> ColorEngine::colors(double hue,
       for (std::size_t i = 0; i < ledCount; ++i) {
         double h = base + static_cast<double>(i) * (360.0 / static_cast<double>(ledCount));
         if (animate) h += 360.0 * speed * t;
-        out.emplace_back(mod360(h), 1.0, brightness);
+        out[i] = Color(mod360(h), 1.0, brightness);
       }
       break;
     }
@@ -120,11 +120,19 @@ std::vector<Color> ColorEngine::colors(double hue,
     case Mode::BREATHING: {
       const double factor = (1.0 - std::cos(2.0 * kPi * speed * t)) / 2.0;
       for (std::size_t i = 0; i < ledCount; ++i)
-        out.emplace_back(hue, 1.0, brightness * factor);
+        out[i] = Color(hue, 1.0, brightness * factor);
       break;
     }
   }
+}
 
+std::vector<Color> ColorEngine::colors(double hue,
+                                       double brightness,
+                                       std::size_t ledCount,
+                                       double speed,
+                                       std::int64_t timeMs) const {
+  std::vector<Color> out;
+  colors(hue, brightness, ledCount, speed, timeMs, out);
   return out;
 }
 
