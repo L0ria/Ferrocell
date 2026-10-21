@@ -5,12 +5,14 @@ in a ferrocell (a device that visualizes magnetic fields). The ESP32 exists
 solely to control the strip's color so the field visualization can be changed
 at runtime.
 
-> Status: **M3 — hardware layer** (issue #4) on top of the M2 pure core
-> (issue #3) and the M1 scaffold (issue #2). The firmware boots over USB-CDC,
-> loads settings (NVS; sane defaults on first boot), attaches the WS2812B
-> strip on GPIO7 via FastLED, and renders frames from the `ColorEngine`.
-> WiFi (`WifiManager`) and the web UI (`UiServer`) land in M4–M5 (issues
-> #5–#6); the full test harness + CI in M6 (issue #7).
+> Status: **M4 — WiFi layer** (issue #5) on top of the M3 hardware layer
+> (issue #4), the M2 pure core (issue #3) and the M1 scaffold (issue #2).
+> The firmware boots over USB-CDC, loads settings (NVS; sane defaults on
+> first boot), attaches the WS2812B strip on GPIO7 via FastLED, renders
+> frames from the `ColorEngine`, and brings up the WiFi layer (`WifiManager`):
+> an AP config page or a STA connection with auto-reconnect. The web UI
+> (`UiServer`) lands in M5 (issue #6); the full test harness + CI in M6
+> (issue #7).
 
 ## Hardware
 
@@ -45,7 +47,7 @@ FastLED**, and compiles. Re-running is a no-op for the installs.
 | FQBN | `esp32:esp32:waveshare_esp32_s3_zero` |
 | FastLED | **3.10.8** |
 | ESP-Wifi-Config | **2.2.6** (vendored in `lib/ESP-Wifi-Config`) |
-| AP IP | `192.168.1.1` (library default) — config page at `http://192.168.1.1/` |
+| AP IP | `192.168.1.1` (library default) — config page at `http://192.168.1.1:8080/` |
 
 The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
 `libraries.json` (lib pins).
@@ -73,9 +75,42 @@ of the host test harness). They delegate all color math to the pure core.
 |---|---|---|
 | `LedController` | `ferrocell/src/hw/LedController.{h,cpp}` | The only class that talks to FastLED; owns the WS2812B strip on GPIO7 + the LED count; `render()` delegates per-LED colors to `ColorEngine` (no color math here) |
 | `ConfigStore` | `ferrocell/src/hw/ConfigStore.{h,cpp}` | The single persistence point over `Preferences` (NVS); `load()` (sane defaults on first boot), `save()`, `setLedCount()` (save + `ESP.restart()`), `reset()` |
+| `WifiManager` | `ferrocell/src/net/WifiManager.{h,cpp}` | The only class that talks to WiFi; wraps `ESP-Wifi-Config` (AP config page + STA auto-reconnect); exposes mode/IP/SSID/RSSI/AP name + reset (M4) |
 
 `ferrocell.ino` stays the thin `setup()`/`loop()` entrypoint (composition
 root): it loads settings, attaches the strip, and renders frames.
+
+### WiFi (M4, firmware-only)
+
+`WifiManager` (`ferrocell/src/net/WifiManager.{h,cpp}`) is the **only** class
+that talks to WiFi — it wraps the vendored `tabahi/ESP-Wifi-Config` (v2.2.6)
+and the application never calls `WiFi.*` directly.
+
+| What | Value |
+|---|---|
+| AP IP | `192.168.1.1` (library default) |
+| AP SSID | `Ferrocell_<9-digit-mac>` (unique per device; the lib appends the MAC) |
+| Config page | `http://192.168.1.1:8080/` (port **8080** — root `80` stays free for the M5 web UI) |
+| Config-page login | **admin / pass_ESP** (library defaults) |
+| STA | saved network in range → connect + **auto-reconnect** (10 s interval) |
+
+**How it works:**
+- **No saved WiFi (or the saved one is out of range)** → the device starts an
+  access point. Join `Ferrocell_<mac>`, open `http://192.168.1.1:8080/`
+  (login **admin / pass_ESP**), pick the network (or type an unbroadcast SSID),
+  and hit **Save**. Saving persists the credentials to flash and **reboots**
+  the device into STA mode.
+- **Saved WiFi in range** → the device connects in STA mode and auto-reconnects
+  if the link drops. The device gets an IP; the (M5) web UI will be reachable
+  at `http://<ip>/`.
+- The config page stays up **perpetually** (in both modes) so the device is
+  always re-configurable.
+- **Reset:** `WifiManager::resetConfig()` wipes the saved credentials and
+  reboots the device back into AP mode.
+
+`WifiManager` is a thin wrapper (little pure logic) and is compiled into the
+firmware only — verified by the `firmware-build` CI job, consistent with the
+other hw-layer classes.
 
 ### Running the core tests (no Arduino, no hardware)
 
@@ -100,9 +135,11 @@ This is the same command the `core-tests` CI job runs on every PR.
 │       │   ├── Color.{h,cpp}
 │       │   ├── ColorEngine.{h,cpp}
 │       │   └── Settings.{h,cpp}
-│       └── hw/           # hardware wrappers (firmware-only)
-│           ├── LedController.{h,cpp}
-│           └── ConfigStore.{h,cpp}
+│       ├── hw/           # hardware wrappers (firmware-only)
+│       │   ├── LedController.{h,cpp}
+│       │   └── ConfigStore.{h,cpp}
+│       └── net/          # network layer (firmware-only)
+│           └── WifiManager.{h,cpp}   # WiFi AP + STA (M4)
 ├── lib/
 │   └── ESP-Wifi-Config/  # vendored @ v2.2.6 (tabahi/ESP-Wifi-Config)
 ├── tests/

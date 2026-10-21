@@ -135,8 +135,10 @@ else
 fi
 
 # --- 2. pinned external library (FastLED) -----------------------------------
-# ESP-Wifi-Config is vendored in lib/ESP-Wifi-Config (v2.2.6) — arduino-cli
-# picks it up from the sketch's parent dir automatically; no registry install.
+# ESP-Wifi-Config is vendored in lib/ESP-Wifi-Config (v2.2.6) — it is NOT a
+# registry lib, so there is nothing to `lib install`. It is passed to the
+# compile explicitly via `--libraries "${SCRIPT_DIR}/lib"` (arduino-cli does
+# NOT auto-discover a sketch-local lib/ dir; only the legacy user dir).
 if [ ! -f "${SCRIPT_DIR}/lib/ESP-Wifi-Config/library.properties" ]; then
   die "vendored lib missing: lib/ESP-Wifi-Config (expected v2.2.6)"
 fi
@@ -163,6 +165,7 @@ mkdir -p "${OUT_DIR}"
 "${ARDUINO_CLI}" compile \
   --fqbn "${FQBN}" \
   --jobs "${JOBS}" \
+  --libraries "${SCRIPT_DIR}/lib" \
   --export-binaries \
   --output-dir "${OUT_DIR}" \
   "${SKETCH_DIR}"
@@ -177,7 +180,7 @@ if [ "${UPLOAD}" -eq 1 ]; then
     [ -n "${PORT}" ] || die "no ESP32 detected — pass --port /dev/ttyACM0"
   fi
   log "flashing to ${PORT} …"
-  "${ARDUINO_CLI}" upload --fqbn "${FQBN}" -p "${PORT}" --input-dir "${OUT_DIR}" "${SKETCH_DIR}"
+  "${ARDUINO_CLI}" upload --fqbn "${FQBN}" -p "${PORT}" --libraries "${SCRIPT_DIR}/lib" --input-dir "${OUT_DIR}" "${SKETCH_DIR}"
   log "flash complete"
 fi
 
