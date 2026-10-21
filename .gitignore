@@ -1,0 +1,14 @@
+# build artifacts
+build/
+*.bin
+*.elf
+*.map
+*.hex
+
+# arduino-cli / IDE
+*.cache
+.vscode/
+
+# OS
+.DS_Store
+*.swp

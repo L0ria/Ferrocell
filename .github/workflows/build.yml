@@ -1,0 +1,43 @@
+# CI for the Ferrocell ESP32-S3-Zero firmware (issue #2, M1).
+#
+# firmware-build — builds the REAL firmware with ./build.sh (arduino-cli +
+#   esp32 core 3.3.12, esp32:esp32:waveshare_esp32_s3_zero, FastLED 3.10.8,
+#   ESP-Wifi-Config vendored in lib/). Exactly the build a dev machine runs.
+#
+# The host-side unit tests + web-UI JS harness + a 3rd job land in M6
+# (issue #7) once the Color / ColorEngine / LedController / UiServer classes
+# exist to test against.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  firmware-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host prerequisites (python3 needed by the esp32 core)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3
+      - name: "Install arduino-cli (pinned release binary)"
+        # arduino/setup-arduino-cli@v1 is broken upstream (issue #29 in Tankie):
+        # with "latest" its tag resolution matches zero versions. Install the
+        # pinned release binary directly — the same source build.sh uses.
+        run: |
+          ARDUINO_CLI_VERSION=1.5.1
+          curl -fsSL -o /tmp/arduino-cli.tar.gz \
+            "https://github.com/arduino/arduino-cli/releases/download/v${ARDUINO_CLI_VERSION}/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz"
+          sudo mkdir -p /opt/arduino-cli
+          sudo tar -xzf /tmp/arduino-cli.tar.gz -C /opt/arduino-cli
+          sudo ln -sf /opt/arduino-cli/arduino-cli /usr/local/bin/arduino-cli
+          arduino-cli version
+      - name: "Build the firmware (build.sh: core 3.3.12 + FastLED 3.10.8)"
+        run: bash build.sh
+      - name: Check the firmware binary
+        run: |
+          ls -l build/ferrocell.ino.bin
+          test -s build/ferrocell.ino.bin
