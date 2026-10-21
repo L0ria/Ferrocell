@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3
-      - name: Install arduino-cli (pinned release binary)
+      - name: "Install arduino-cli (pinned release binary)"
         # arduino/setup-arduino-cli@v1 is broken upstream (issue #29 in Tankie):
         # with "latest" its tag resolution matches zero versions. Install the
         # pinned release binary directly — the same source build.sh uses.
@@ -35,7 +35,7 @@ jobs:
           sudo tar -xzf /tmp/arduino-cli.tar.gz -C /opt/arduino-cli
           sudo ln -sf /opt/arduino-cli/arduino-cli /usr/local/bin/arduino-cli
           arduino-cli version
-      - name: Build the firmware (build.sh: core 3.3.12 + FastLED 3.10.8)
+      - name: "Build the firmware (build.sh: core 3.3.12 + FastLED 3.10.8)"
         run: bash build.sh
       - name: Check the firmware binary
         run: |
