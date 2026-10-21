@@ -5,10 +5,11 @@ in a ferrocell (a device that visualizes magnetic fields). The ESP32 exists
 solely to control the strip's color so the field visualization can be changed
 at runtime.
 
-> Status: **M1 — scaffold + build system** (issue #2). The firmware currently
-> boots, prints over USB-CDC, and holds the strip data pin LOW. The class-based
-> application (color engine, LED controller, WiFi, web UI) lands in M2–M5
-> (issues #3–#6); the test harness + full CI in M6 (issue #7).
+> Status: **M2 — pure color/LED core** (issue #3) on top of the M1 scaffold
+> (issue #2). The firmware boots, prints over USB-CDC, and holds the strip
+> data pin LOW. The class-based application (color engine, LED controller,
+> WiFi, web UI) lands in M3–M5 (issues #4–#6); the full test harness + CI in
+> M6 (issue #7).
 
 ## Hardware
 
@@ -48,6 +49,27 @@ FastLED**, and compiles. Re-running is a no-op for the installs.
 The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
 `libraries.json` (lib pins).
 
+## Core (pure, host-testable)
+
+The lighting logic lives in a **pure C++ core with no Arduino / FastLED /
+hardware dependencies**, implemented as classes (object-oriented, modular):
+
+| Class | File | Responsibility |
+|---|---|---|
+| `ferrocell::Color` | `ferrocell/src/core/Color.{h,cpp}` | HSV value type; `toRgb()` (HSV→RGB), clamping, small helpers |
+| `ferrocell::ColorEngine` | `ferrocell/src/core/ColorEngine.{h,cpp}` | Pure per-LED color generator for modes `SOLID` / `RAINBOW` / `BREATHING` / `GRADIENT` / `OFF`; time is **injected** (`timeMs`) so it is deterministic |
+
+Because the core has zero hardware dependencies it compiles and runs on the
+host with plain `g++ -std=c++17`, which is what the unit tests target.
+
+### Running the core tests (no Arduino, no hardware)
+
+```bash
+tests/run_tests.sh          # build + run the pure-core unit tests
+```
+
+This is the same command the `core-tests` CI job runs on every PR.
+
 ## Repository layout
 
 ```
@@ -55,9 +77,15 @@ The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
 ├── libraries.json        # external library pins (FastLED, ESP-Wifi-Config)
 ├── ferrocell/
 │   ├── ferrocell.ino     # thin setup()/loop() entrypoint (M1 boot sketch)
-│   └── sketch.yaml       # IDE 2.x project record (FQBN + core + lib pins)
+│   ├── sketch.yaml       # IDE 2.x project record (FQBN + core + lib pins)
+│   └── src/core/         # pure, host-testable core (Color + ColorEngine)
+│       ├── Color.{h,cpp}
+│       └── ColorEngine.{h,cpp}
 ├── lib/
 │   └── ESP-Wifi-Config/  # vendored @ v2.2.6 (tabahi/ESP-Wifi-Config)
+├── tests/
+│   ├── core_test.cpp     # pure-core unit tests (Color + ColorEngine)
+│   └── run_tests.sh      # host test runner (g++ -std=c++17, no Arduino)
 ├── web/                  # UI assets (M5, issue #6)
 ├── tests/                # host-side test harness (M6, issue #7)
 └── .github/workflows/
