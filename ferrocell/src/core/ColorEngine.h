@@ -64,6 +64,16 @@ class ColorEngine {
                             double speed,
                             std::int64_t timeMs) const;
 
+  // Same computation, but writes into a caller-provided buffer (no per-call
+  // allocation). `out` is resized to `ledCount`. Preferred on the device:
+  // LedController keeps one buffer and reuses it every frame.
+  void colors(double hue,
+              double brightness,
+              std::size_t ledCount,
+              double speed,
+              std::int64_t timeMs,
+              std::vector<Color>& out) const;
+
   // The current mode.
   Mode mode() const;
 

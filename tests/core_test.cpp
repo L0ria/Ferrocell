@@ -214,6 +214,24 @@ static void test_engine_mode_names() {
   CHECK(d.mode() == Mode::SOLID);
 }
 
+static void test_engine_buffer_overload() {
+  section("ColorEngine buffer overload == returning version");
+  const ColorEngine rainbow(Mode::RAINBOW);
+  const std::vector<Color> a =
+      rainbow.colors(10.0, 0.8, 8, 1.0, 12345);
+  std::vector<Color> b;
+  rainbow.colors(10.0, 0.8, 8, 1.0, 12345, b);
+  CHECK_EQ(b.size(), a.size());
+  bool same = (b.size() == a.size());
+  for (std::size_t i = 0; same && i < a.size(); ++i) same = (a[i] == b[i]);
+  CHECK(same);
+
+  // Empty buffer for ledCount == 0.
+  std::vector<Color> empty;
+  rainbow.colors(0.0, 1.0, 0, 0.0, 0, empty);
+  CHECK_EQ(empty.size(), (std::size_t)0);
+}
+
 int main() {
   std::printf("Ferrocell core tests (M2)\n");
   test_color_rgb_primaries();
@@ -228,6 +246,7 @@ int main() {
   test_engine_breathing();
   test_engine_edge_cases();
   test_engine_mode_names();
+  test_engine_buffer_overload();
 
   std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
   if (g_failures == 0) {

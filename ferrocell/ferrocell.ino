@@ -1,38 +1,60 @@
 // =============================================================================
-//  Ferrocell — M1 minimal boot sketch
+//  Ferrocell — firmware entrypoint (M3, issue #4)
 //
 //  Hardware : Waveshare ESP32-S3-Zero
 //  FQBN     : esp32:esp32:waveshare_esp32_s3_zero
 //  Strip    : external WS2812B on GPIO7 (5V rail + level shifter).
 //             The onboard WS2812 (GPIO21) is intentionally NOT used.
 //
-//  This milestone only proves the arduino-cli toolchain + build system and a
-//  working USB-CDC serial link. The class-based application (Color /
-//  ColorEngine / LedController / ConfigStore / WifiManager / UiServer) lands
-//  in M2–M5 (issues #3–#6). Keep this file the thin setup()/loop() entrypoint;
-//  real logic goes into the .cpp/.h modules added by the later milestones.
+//  This file stays the THIN setup()/loop() entrypoint. All real logic is in
+//  the class-based modules (object-oriented, modular):
+//    core/Settings, core/Color, core/ColorEngine   (pure, host-tested)
+//    hw/ConfigStore, hw/LedController              (hardware wrappers)
+//  WiFi (WifiManager) and the web UI (UiServer) land in M4–M5 (issues #5–#6).
+//
+//  Boot flow:
+//    1. USB-CDC serial up.
+//    2. Load settings (NVS; sane defaults on first boot).
+//    3. Attach the strip (FastLED) with the configured LED count.
+//    4. loop(): render a frame from the ColorEngine at the current time.
 // =============================================================================
 
-// External WS2812B data pin (single GPIO, free of strapping/PSRAM).
-static const uint8_t kLedStripPin = 7;
+#include <Arduino.h>
+
+#include "src/core/Settings.h"
+#include "src/hw/ConfigStore.h"
+#include "src/hw/LedController.h"
+
+// App-wide singletons (composition root). Kept here so the entrypoint stays
+// the only place that wires the modules together.
+static ConfigStore g_config;
+static LedController g_leds;
+static ferrocell::Settings g_settings;
 
 void setup() {
-  // USB-CDC serial (board default USBMode=hwcdc) at 115200.
   Serial.begin(115200);
   delay(300);  // let the USB-CDC link settle before the first print
 
-  // Strip data pin: output, driven LOW at boot (all LEDs off).
-  pinMode(kLedStripPin, OUTPUT);
-  digitalWrite(kLedStripPin, LOW);
-
   Serial.println("Ferrocell boot");
-  Serial.print  ("board=");      Serial.println("waveshare_esp32_s3_zero");
-  Serial.print  ("strip_gpio="); Serial.println(kLedStripPin);
-  Serial.println("milestone=M1 (scaffold + build)");
+  Serial.print  ("board="); Serial.println("waveshare_esp32_s3_zero");
+  Serial.print  ("strip_gpio="); Serial.println(LedController::kPin);
+  Serial.println("milestone=M3 (hardware layer: LedController + ConfigStore)");
+
+  // 1. Load settings (defaults on first boot; always normalized).
+  g_settings = g_config.load();
+
+  // 2. Attach the strip with the configured LED count.
+  g_leds.begin(g_settings.ledCount());
+  Serial.printf("[boot] strip attached: %u LEDs\n", g_leds.ledCount());
+
+  // 3. Render an initial frame so the strip shows the configured state.
+  g_leds.render(g_settings, millis());
 }
 
 void loop() {
-  // M2+ : drive the strip from the ColorEngine, serve the web UI, manage WiFi.
-  // Intentionally idle for M1 — the boot print above is the contract.
-  delay(1000);
+  // Render the current settings each loop. The ColorEngine is a pure function
+  // of (settings, time), so animated modes (rainbow/breathing) advance as
+  // millis() increases. (M4–M5 add WiFi + the web UI to change g_settings.)
+  g_leds.render(g_settings, millis());
+  delay(10);  // ~100 fps cap; keeps the loop from spinning hot
 }
