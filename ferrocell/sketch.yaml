@@ -5,10 +5,13 @@
 # (single source of truth for the CLI build); this file is the IDE/2.x record.
 profiles:
   ferrocell:
-    fqbn: esp32:esp32:waveshare_esp32_s3_zero
+    # PartitionScheme=otanofs (issue #16): two 1.94 MiB OTA slots, no SPIFFS
+    # (we mount no filesystem at runtime; the UI is PROGMEM-embedded).
+    fqbn: esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs
     platforms:
       - platform: esp32:esp32 (3.3.12)
     libraries:
       - FastLED (3.10.8)
+      - ElegantOTA (4.0.0)   # OTA over WiFi (issue #16)
       # ESP-Wifi-Config is vendored in lib/ESP-Wifi-Config (v2.2.6) — not a
       # registry lib, so it is not listed here (see libraries.json).

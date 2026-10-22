@@ -74,6 +74,12 @@ class UiServer {
   // entrypoint after each /api/set).
   ferrocell::Settings& settings();
 
+  // The underlying WebServer (issue #16). Exposed so the entrypoint can hand
+  // it to ElegantOTA (ElegantOTA.begin(&g_ui.rawServer())); UiServer remains
+  // the only class that OWNS the server — ElegantOTA only registers routes on
+  // it. Call AFTER begin() (the server must be listening on kPort).
+  WebServer& rawServer();
+
  private:
   // --- route handlers ------------------------------------------------------
   void handleRoot();

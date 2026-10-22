@@ -85,6 +85,7 @@ const EXPECTED_PURE = [
   "hsvToRgb", "rgbToHsv", "wheelToHueSat", "hueSatToWheel", "presets",
   "knownSetFields", "buildSetPayload", "parseState",
   "kDebounceMs", "debounceMs",
+  "otaRoutes", "otaPortalPath",
 ];
 for (const k of EXPECTED_PURE) check(k in pure, `pure.${k} exists`);
 eq(pure.knownModes.length, 5, "knownModes has 5 entries");
@@ -336,6 +337,26 @@ for (const f of pure.knownSetFields) {
 // ledCount is the ONLY immediate field (the only one that reboots).
 const immediate = pure.knownSetFields.filter((f) => pure.debounceMs(f) === 0);
 eq(JSON.stringify(immediate), JSON.stringify(["ledCount"]), "only ledCount is immediate");
+
+// ===========================================================================
+section("9. OTA routes (issue #16 — ElegantOTA on the shared WebServer)");
+const OTA = pure.otaRoutes;
+check(Array.isArray(OTA), "otaRoutes is an array");
+eq(OTA.length, 4, "exactly 4 OTA routes");
+const otaSet = new Set(OTA.map((e) => `${e.method} ${e.path}`));
+for (const want of [
+  "GET /update", "GET /ota/metadata", "GET /ota/start", "POST /ota/upload",
+]) check(otaSet.has(want), `OTA route ${want} declared`);
+for (const e of OTA)
+  check(
+    typeof e.method === "string" && typeof e.path === "string" &&
+      (e.path === "/update" || e.path.startsWith("/ota/")),
+    `OTA route shape ok: ${e.method} ${e.path}`
+  );
+eq(pure.otaPortalPath, "/update", "otaPortalPath is /update");
+// The OTA routes must NOT collide with the JSON API endpoints.
+const apiSet = new Set(EP.map((e) => `${e.method} ${e.path}`));
+for (const e of OTA) check(!apiSet.has(`${e.method} ${e.path}`), `no collision: ${e.method} ${e.path}`);
 
 // ===========================================================================
 console.log("");

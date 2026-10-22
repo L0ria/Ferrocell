@@ -21,10 +21,14 @@
 //    3. Attach the strip (FastLED) with the configured LED count.
 //    4. Boot the WiFi layer (AP config page on :8080, or STA if saved).
 //    5. Boot the web UI + JSON API on port 80 (UiServer).
-//    6. loop(): render a frame + pump the WiFi layer + the web server.
+//    6. Attach ElegantOTA to the SAME server (issue #16): /update portal +
+//       /ota/* on port 80, in both STA and AP mode.
+//    7. loop(): render a frame + pump the WiFi layer + the web server + OTA.
 // =============================================================================
 
 #include <Arduino.h>
+
+#include <ElegantOTA.h>
 
 #include "src/core/Settings.h"
 #include "src/hw/ConfigStore.h"
@@ -67,6 +71,16 @@ void setup() {
   //    from the same settings the entrypoint owns, so seed the server's copy.
   g_ui.settings() = g_settings;
   g_ui.begin();
+
+  // 6. OTA over WiFi (issue #16): attach ElegantOTA to the SAME WebServer the
+  //    UI uses, so /update + /ota/* share port 80 in BOTH STA and AP mode.
+  //    No auth for v1 (local network; HTTP Basic auth is issue #17).
+  //    setAutoReboot(true) is the default — the device reboots into the new
+  //    app ~2 s after a successful upload (issue #16, A5). The saved WiFi
+  //    config lives in NVS, which OTA never touches, so it is retained (A4).
+  ElegantOTA.begin(&g_ui.rawServer());
+  ElegantOTA.setAutoReboot(true);
+  Serial.println("[boot] OTA enabled: http://<ip>/update (STA) or http://192.168.1.1/update (AP)");
 }
 
 void loop() {
@@ -75,6 +89,9 @@ void loop() {
 
   // Pump the web UI + JSON API (port 80).
   g_ui.handle();
+
+  // Pump OTA (issue #16): the delayed post-update reboot (A5) + upload bookkeeping.
+  ElegantOTA.loop();
 
   // Render the current settings each loop. g_ui.settings() is the single
   // source of truth: /api/set updates it, and the ColorEngine is a pure

@@ -5,8 +5,9 @@
 # Standalone, idempotent build helper mirroring a-i-a-d/Tankie. It:
 #   1. ensures arduino-cli is available,
 #   2. registers the esp32 board index and installs the PINNED core (3.3.12),
-#   3. installs the pinned external library (FastLED 3.10.8) — the
-#      ESP-Wifi-Config dependency is vendored in lib/ESP-Wifi-Config (v2.2.6),
+#   3. installs the pinned external libraries (FastLED 3.10.8, ElegantOTA
+#      4.0.0) — the ESP-Wifi-Config dependency is vendored in
+#      lib/ESP-Wifi-Config (v2.2.6),
 #   4. compiles the `ferrocell` sketch for the Waveshare ESP32-S3-Zero FQBN,
 #   5. optionally flashes (--upload) to the first detected ESP32.
 #
@@ -22,8 +23,9 @@
 #
 # Pins (single source of truth for the CLI build):
 #   core   esp32:esp32 @ 3.3.12
-#   FQBN   esp32:esp32:waveshare_esp32_s3_zero
+#   FQBN   esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs
 #   FastLED 3.10.8
+#   ElegantOTA 4.0.0
 #   ESP-Wifi-Config 2.2.6 (vendored in lib/)
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -31,8 +33,13 @@ set -euo pipefail
 # --- pinned, known-good versions -------------------------------------------
 CORE_PKG="esp32:esp32"
 CORE_VERSION="3.3.12"
-FQBN="esp32:esp32:waveshare_esp32_s3_zero"
+# Partition scheme: otanofs = two 1.94 MiB OTA slots (app0/app1), NO SPIFFS
+# (issue #16, Q1: we mount no filesystem at runtime — the UI is PROGMEM-embedded
+# and settings live in NVS — so the 1.5 MB SPIFFS of the `default` scheme was
+# dead weight; otanofs gives ~836 KB more headroom per OTA slot for ElegantOTA.)
+FQBN="esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs"
 FASTLED_VERSION="3.10.8"
+ELEGANTOTA_VERSION="4.0.0"
 ARDUINO_CLI_VERSION="1.5.1"
 ESP32_INDEX_URL="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json"
 
@@ -148,6 +155,19 @@ if ! "${ARDUINO_CLI}" lib list 2>/dev/null | awk '{print $1}' | grep -qx "FastLE
   "${ARDUINO_CLI}" lib install "FastLED@${FASTLED_VERSION}"
 else
   log "FastLED already installed"
+fi
+
+# --- 2b. pinned external library (ElegantOTA) ------------------------------
+# OTA updates over WiFi (issue #16): the /update portal + /ota/* routes on the
+# same WebServer UiServer owns (port 80, STA + AP). Zero non-core dependencies;
+# the portal is a PROGMEM array (no filesystem needed — compatible with the
+# PROGMEM-embedded UI).
+if ! "${ARDUINO_CLI}" lib list 2>/dev/null | awk '{print $1}' | grep -qx "ElegantOTA"; then
+  log "installing ElegantOTA@${ELEGANTOTA_VERSION} …"
+  "${ARDUINO_CLI}" lib update-index >/dev/null 2>&1 || true
+  "${ARDUINO_CLI}" lib install "ElegantOTA@${ELEGANTOTA_VERSION}"
+else
+  log "ElegantOTA already installed"
 fi
 
 # --- 3. preflight -----------------------------------------------------------

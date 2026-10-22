@@ -33,6 +33,17 @@
       { method: "POST", path: "/api/reset" }
     ],
 
+    // OTA (issue #16): routes registered by ElegantOTA on the SAME WebServer
+    // (port 80, in both STA and AP mode). Kept SEPARATE from the JSON API
+    // table above — these are served by the library, not by UiServer.
+    otaRoutes: [
+      { method: "GET",  path: "/update" },
+      { method: "GET",  path: "/ota/metadata" },
+      { method: "GET",  path: "/ota/start" },
+      { method: "POST", path: "/ota/upload" }
+    ],
+    otaPortalPath: "/update",
+
     knownModes: ["solid", "rainbow", "breathing", "gradient", "off"],
 
     // Canonical ranges (mirror ferrocell/src/core/Settings.h).
@@ -204,8 +215,9 @@
         var ids = ["wheel", "wheelKnob", "hueVal", "satVal", "swatch", "bright", "brightVal",
                    "speed", "speedVal", "modes", "presets", "ledMinus", "ledPlus",
                    "ledCount", "saveLeds", "status", "statusText", "tabLight", "tabWifi",
-                   "paneLight", "paneWifi", "scan", "netlist", "ssid", "password",
-                   "saveWifi", "reboot", "reset", "toast", "fw"];
+                   "tabUpdate", "paneLight", "paneWifi", "paneUpdate",
+                   "scan", "netlist", "ssid", "password",
+                   "saveWifi", "reboot", "reset", "otaOpen", "fwVer", "toast", "fw"];
         for (var i = 0; i < ids.length; i++) this.el[ids[i]] = document.getElementById(ids[i]);
       },
 
@@ -240,6 +252,7 @@
         this.setActiveMode(st.mode);
         this.renderStatus(st);
         if (this.el.fw) this.el.fw.textContent = "fw " + st.fw;
+        if (this.el.fwVer) this.el.fwVer.textContent = st.fw || "\u2014";
       },
 
       renderStatus: function (st) {
@@ -374,8 +387,10 @@
       switchTab: function (name) {
         this.el.tabLight.classList.toggle("active", name === "light");
         this.el.tabWifi.classList.toggle("active", name === "wifi");
+        this.el.tabUpdate.classList.toggle("active", name === "update");
         this.el.paneLight.classList.toggle("hidden", name !== "light");
         this.el.paneWifi.classList.toggle("hidden", name !== "wifi");
+        this.el.paneUpdate.classList.toggle("hidden", name !== "update");
       },
 
       renderNetlist: function (networks) {
@@ -419,6 +434,14 @@
         // Tabs.
         this.el.tabLight.addEventListener("click", function () { self.switchTab("light"); });
         this.el.tabWifi.addEventListener("click", function () { self.switchTab("wifi"); });
+        this.el.tabUpdate.addEventListener("click", function () { self.switchTab("update"); });
+
+        // OTA (issue #16): the portal is served by ElegantOTA at /update on the
+        // SAME port (STA + AP). Just navigate to it — it is a self-contained
+        // page (file picker + progress), no API calls needed here.
+        this.el.otaOpen.addEventListener("click", function () {
+          window.location.href = "/update";
+        });
 
         // Wheel (pointer events for mouse + touch).
         var c = this.el.wheel;

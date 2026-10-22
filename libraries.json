@@ -6,6 +6,12 @@
       "url": "https://github.com/FastLED/FastLED"
     },
     {
+      "name": "ElegantOTA@4.0.0",
+      "version": "4.0.0",
+      "url": "https://github.com/ayushsharma82/ElegantOTA",
+      "note": "OTA updates over WiFi (issue #16): /update portal + /ota/* on the shared WebServer"
+    },
+    {
       "name": "ESP-Wifi-Config@2.2.6",
       "version": "2.2.6",
       "url": "https://github.com/tabahi/ESP-Wifi-Config",

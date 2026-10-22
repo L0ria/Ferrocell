@@ -25,6 +25,8 @@ UiServer::UiServer(ConfigStore& config, LedController& leds, WifiManager& wifi)
 
 ferrocell::Settings& UiServer::settings() { return settings_; }
 
+WebServer& UiServer::rawServer() { return server_; }
+
 void UiServer::begin() {
   server_.begin(kPort);
 
