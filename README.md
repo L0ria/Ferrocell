@@ -34,7 +34,30 @@ Arduino IDE required.
 ./build.sh --upload        # build + flash to the first ESP32 on serial
 ./build.sh --port /dev/ttyACM0   # flash to a specific port
 ./build.sh --clean         # wipe build/ + the global sketch cache first
+./build.sh --fqbn esp32:esp32:esp32s3   # build for a different board/chip
+FQBN=esp32:esp32:esp32s3 ./build.sh    # same, via env var
 ```
+
+### Flash (no rebuild)
+
+`flash.sh` uploads the image `build.sh` already exported — no recompile — so it
+is the quick tool for re-flashing and for baud/chip experiments (the S3-Zero
+can brownout from the 5 V rail at higher flash speeds, issue #19):
+
+```bash
+./flash.sh                            # flash build/ to the first ESP32 @ 115200
+./flash.sh --port /dev/ttyACM0        # specific port
+./flash.sh --speed 921600             # faster link (if the rail can take it)
+./flash.sh --fqbn esp32:esp32:esp32s3 # different chip/board
+./flash.sh --erase                    # erase all flash (factory reset)
+```
+
+Parameters (flag > env > default): `--port`/`PORT` (default: auto-detect the
+first ESP32/tty), `--speed`/`SPEED` (default **115200** — brownout-safe),
+`--fqbn`/`FQBN` (default: the S3-Zero FQBN above). `--erase` is a simple
+`arduino-cli board erase` — it needs no image. Without an image, `flash.sh`
+tells you to run `./build.sh` first.
+
 
 `build.sh` is self-contained: it locates (or installs) arduino-cli, registers
 the esp32 board index, installs the **pinned core**, installs the **pinned
@@ -45,7 +68,7 @@ FastLED**, and compiles. Re-running is a no-op for the installs.
 | What | Value |
 |---|---|
 | Core | `esp32:esp32` **3.3.12** |
-| FQBN | `esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs` |
+| FQBN | `esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs` (default — override with `--fqbn` / `FQBN` in `build.sh`/`flash.sh`) |
 | Partition | `otanofs` — two **1.94 MiB** OTA slots, no SPIFFS (issue #16; we mount no runtime FS) |
 | FastLED | **3.10.8** |
 | ElegantOTA | **4.0.0** (OTA over WiFi, issue #16) |
@@ -254,7 +277,8 @@ every PR.
 ## Repository layout
 
 ```
-├── build.sh              # idempotent arduino-cli build/flash (single source of truth)
+├── build.sh              # idempotent arduino-cli build (single source of truth; --fqbn / FQBN to override)
+├── flash.sh              # flash-only: upload build/ (no recompile) — --port/--speed/--fqbn/--erase
 ├── libraries.json        # external library pins (FastLED, ElegantOTA, ESP-Wifi-Config)
 ├── ferrocell/
 │   ├── ferrocell.ino     # thin setup()/loop() entrypoint (M1 boot sketch)
