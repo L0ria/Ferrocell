@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="dark">
+  <title>Ferrocell</title>
+  <link rel="stylesheet" href="/ui.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        <h1>Ferrocell</h1>
+        <div class="sub" id="fw">loading&hellip;</div>
+      </div>
+    </div>
+    <div class="status" id="status">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="statusText">connecting&hellip;</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button id="tabLight" class="active" role="tab" aria-selected="true">Light</button>
+    <button id="tabWifi" role="tab" aria-selected="false">WiFi</button>
+  </nav>
+
+  <!-- ============================ LIGHT TAB ============================ -->
+  <section id="paneLight" role="tabpanel">
+    <div class="card">
+      <h2>Color</h2>
+      <div class="wheel-wrap">
+        <div id="wheel" aria-label="Color wheel"></div>
+        <div id="wheelKnob" aria-hidden="true"></div>
+      </div>
+      <div class="wheel-readout" style="margin-top:14px;">
+        <span class="chip">hue <b id="hueVal">0&deg;</b></span>
+        <span class="chip">sat <b id="satVal">100%</b></span>
+        <span class="chip"><span class="swatch" id="swatch"></span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Intensity</h2>
+      <div class="field">
+        <div class="label"><span>Brightness</span><span class="val" id="brightVal">50%</span></div>
+        <input type="range" id="bright" min="0" max="100" value="50" aria-label="Brightness">
+      </div>
+      <div class="field">
+        <div class="label"><span>Speed</span><span class="val" id="speedVal">1.0x</span></div>
+        <input type="range" id="speed" min="0" max="10" step="0.1" value="1" aria-label="Speed">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Mode</h2>
+      <div class="modes" id="modes">
+        <button data-mode="solid">Solid</button>
+        <button data-mode="rainbow">Rainbow</button>
+        <button data-mode="breathing">Breathing</button>
+        <button data-mode="gradient">Gradient</button>
+        <button data-mode="off">Off</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Presets</h2>
+      <div class="presets" id="presets"></div>
+    </div>
+
+    <div class="card">
+      <h2>LED count</h2>
+      <div class="stepper">
+        <button id="ledMinus" aria-label="Decrease LED count">&minus;</button>
+        <div class="count" id="ledCount">30</div>
+        <button id="ledPlus" aria-label="Increase LED count">+</button>
+      </div>
+      <div class="hint">Changing the LED count <b>saves and reboots</b> the device to re-initialize the strip.</div>
+      <button class="btn primary" id="saveLeds">Save LED count</button>
+    </div>
+  </section>
+
+  <!-- ============================ WIFI TAB ============================ -->
+  <section id="paneWifi" class="hidden" role="tabpanel">
+    <div class="card">
+      <h2>Networks</h2>
+      <div class="netlist" id="netlist">
+        <div class="empty">Tap &ldquo;Scan networks&rdquo; to find nearby WiFi.</div>
+      </div>
+      <button class="btn" id="scan">Scan networks</button>
+    </div>
+
+    <div class="card">
+      <h2>Save connection</h2>
+      <div class="field">
+        <div class="label"><span>SSID</span></div>
+        <input type="text" id="ssid" placeholder="Network name" autocomplete="off">
+      </div>
+      <div class="field">
+        <div class="label"><span>Password</span></div>
+        <input type="password" id="password" placeholder="Leave blank for open networks" autocomplete="off">
+      </div>
+      <button class="btn primary" id="saveWifi">Save &amp; connect</button>
+      <div class="hint">Saving reboots the device and connects to the network. The full config page (login admin / pass_ESP) stays available on port 8080 as a fallback.</div>
+    </div>
+
+    <div class="card">
+      <h2>Device</h2>
+      <div class="grid2">
+        <button class="btn" id="reboot">Reboot</button>
+        <button class="btn danger" id="reset">Reset WiFi</button>
+      </div>
+      <div class="hint">Reset clears the saved WiFi credentials and reboots into AP mode.</div>
+    </div>
+  </section>
+
+  <footer>
+    Ferrocell &middot; Waveshare ESP32-S3-Zero &middot; WS2812B<br>
+    UI served by <code>UiServer</code> (M5) &middot; config page fallback on port 8080
+  </footer>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/ui.js"></script>
+</body>
+</html>

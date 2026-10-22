@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Ferrocell — host-side test runner (M2 issue #3, M3 issue #4).
+# Ferrocell — host-side test runner (M2 issue #3, M3 issue #4, M5 issue #6).
 #
 # Builds and runs the PURE-core unit tests with the system g++ — NO Arduino
 # toolchain, NO FastLED, NO hardware. This is the same command the M6 CI
@@ -9,6 +9,7 @@
 # Test targets (each is a self-contained binary with its own main()):
 #   core_test      Color + ColorEngine   (M2)
 #   settings_test  Settings defaults + normalize/clamping (M3)
+#   api_test       Json + Api (the JSON API contract) (M5)
 #
 # All test binaries link against the pure core sources (Color, ColorEngine,
 # Settings) which have zero hardware dependencies.
@@ -35,12 +36,15 @@ CORE_SRCS=(
   "${ROOT}/ferrocell/src/core/Color.cpp"
   "${ROOT}/ferrocell/src/core/ColorEngine.cpp"
   "${ROOT}/ferrocell/src/core/Settings.cpp"
+  "${ROOT}/ferrocell/src/core/Json.cpp"
+  "${ROOT}/ferrocell/src/core/Api.cpp"
 )
 
 # Test files to build + run (each has its own main()).
 TESTS=(
   "core_test"
   "settings_test"
+  "api_test"
 )
 
 mkdir -p "${OUT_DIR}"

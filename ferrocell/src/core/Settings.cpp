@@ -1,5 +1,5 @@
 // =============================================================================
-//  Settings — implementation (M3, issue #4). Pure C++17, no Arduino deps.
+//  Settings — implementation (M3, issue #4; M5, #6). Pure C++17, no Arduino deps.
 //
 //  normalize() is the single place the canonical ranges are enforced. It is
 //  deterministic and side-effect free, so the host unit tests (M6 CI) can
@@ -57,6 +57,7 @@ Settings Settings::defaults() {
   Settings s;
   s.ledCount_ = 30;
   s.hue_ = 0.0;
+  s.saturation_ = 1.0;
   s.brightness_ = 0.5;
   s.mode_ = "solid";
   s.speed_ = 1.0;
@@ -66,6 +67,7 @@ Settings Settings::defaults() {
 Settings Settings::normalize(Settings s) {
   s.ledCount_ = clampCount(s.ledCount_);
   s.hue_ = wrapHue(s.hue_);
+  s.saturation_ = clamp01(s.saturation_);
   s.brightness_ = clamp01(s.brightness_);
   s.speed_ = clampSpeed(s.speed_);
   s.mode_ = toLower(s.mode_);
@@ -75,18 +77,21 @@ Settings Settings::normalize(Settings s) {
 
 std::uint16_t Settings::ledCount() const { return ledCount_; }
 double Settings::hue() const { return hue_; }
+double Settings::saturation() const { return saturation_; }
 double Settings::brightness() const { return brightness_; }
 const std::string& Settings::mode() const { return mode_; }
 double Settings::speed() const { return speed_; }
 
 void Settings::setLedCount(std::uint16_t n) { ledCount_ = n; }
 void Settings::setHue(double hue) { hue_ = hue; }
+void Settings::setSaturation(double s) { saturation_ = s; }
 void Settings::setBrightness(double b) { brightness_ = b; }
 void Settings::setMode(const std::string& mode) { mode_ = mode; }
 void Settings::setSpeed(double speed) { speed_ = speed; }
 
 bool Settings::operator==(const Settings& other) const {
   return ledCount_ == other.ledCount_ && hue_ == other.hue_ &&
+         saturation_ == other.saturation_ &&
          brightness_ == other.brightness_ && mode_ == other.mode_ &&
          speed_ == other.speed_;
 }

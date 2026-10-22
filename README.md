@@ -5,14 +5,14 @@ in a ferrocell (a device that visualizes magnetic fields). The ESP32 exists
 solely to control the strip's color so the field visualization can be changed
 at runtime.
 
-> Status: **M4 — WiFi layer** (issue #5) on top of the M3 hardware layer
-> (issue #4), the M2 pure core (issue #3) and the M1 scaffold (issue #2).
-> The firmware boots over USB-CDC, loads settings (NVS; sane defaults on
-> first boot), attaches the WS2812B strip on GPIO7 via FastLED, renders
-> frames from the `ColorEngine`, and brings up the WiFi layer (`WifiManager`):
-> an AP config page or a STA connection with auto-reconnect. The web UI
-> (`UiServer`) lands in M5 (issue #6); the full test harness + CI in M6
-> (issue #7).
+> Status: **M5 — web UI + JSON API** (issue #6) on top of the M4 WiFi layer
+> (issue #5), the M3 hardware layer (issue #4), the M2 pure core (issue #3)
+> and the M1 scaffold (issue #2). The firmware boots over USB-CDC, loads
+> settings (NVS; sane defaults on first boot), attaches the WS2812B strip on
+> GPIO7 via FastLED, renders frames from the `ColorEngine`, brings up the
+> WiFi layer (`WifiManager`: AP config page or STA with auto-reconnect), and
+> serves the self-contained web UI + JSON API (`UiServer`) on port 80. The
+> full test harness + CI lands in M6 (issue #7).
 
 ## Hardware
 
@@ -61,10 +61,14 @@ hardware dependencies**, implemented as classes (object-oriented, modular):
 |---|---|---|
 | `ferrocell::Color` | `ferrocell/src/core/Color.{h,cpp}` | HSV value type; `toRgb()` (HSV→RGB), clamping, small helpers |
 | `ferrocell::ColorEngine` | `ferrocell/src/core/ColorEngine.{h,cpp}` | Pure per-LED color generator for modes `SOLID` / `RAINBOW` / `BREATHING` / `GRADIENT` / `OFF`; time is **injected** (`timeMs`) so it is deterministic |
-| `ferrocell::Settings` | `ferrocell/src/core/Settings.{h,cpp}` | User-config value type (ledCount, hue, brightness, mode, speed); `defaults()` + `normalize()` (clamping/wrapping) |
+| `ferrocell::Settings` | `ferrocell/src/core/Settings.{h,cpp}` | User-config value type (ledCount, hue, saturation, brightness, mode, speed); `defaults()` + `normalize()` (clamping/wrapping) |
+| `ferrocell::json` | `ferrocell/src/core/Json.{h,cpp}` | Minimal dependency-free JSON value + parser + serializer (the wire format for the API) |
+| `ferrocell::api` | `ferrocell/src/core/Api.{h,cpp}` | The JSON API contract: `stateJson()` (GET /api/state) + `applySet()` (POST /api/set) — the single place the shapes are defined |
 
 Because the core has zero hardware dependencies it compiles and runs on the
-host with plain `g++ -std=c++17`, which is what the unit tests target.
+host with plain `g++ -std=c++17`, which is what the unit tests target (the
+`api_test` target asserts the exact JSON shapes the web UI + the C++ core
+agree on — the stable contract for the M6 Node harness).
 
 ### Hardware layer (M3, firmware-only)
 
@@ -75,10 +79,12 @@ of the host test harness). They delegate all color math to the pure core.
 |---|---|---|
 | `LedController` | `ferrocell/src/hw/LedController.{h,cpp}` | The only class that talks to FastLED; owns the WS2812B strip on GPIO7 + the LED count; `render()` delegates per-LED colors to `ColorEngine` (no color math here) |
 | `ConfigStore` | `ferrocell/src/hw/ConfigStore.{h,cpp}` | The single persistence point over `Preferences` (NVS); `load()` (sane defaults on first boot), `save()`, `setLedCount()` (save + `ESP.restart()`), `reset()` |
-| `WifiManager` | `ferrocell/src/net/WifiManager.{h,cpp}` | The only class that talks to WiFi; wraps `ESP-Wifi-Config` (AP config page + STA auto-reconnect); exposes mode/IP/SSID/RSSI/AP name + reset (M4) |
+| `WifiManager` | `ferrocell/src/net/WifiManager.{h,cpp}` | The only class that talks to WiFi; wraps `ESP-Wifi-Config` (AP config page + STA auto-reconnect); exposes mode/IP/SSID/RSSI/AP name + `scan()` + `save()` + reset (M4/M5) |
+| `UiServer` | `ferrocell/src/net/UiServer.{h,cpp}` | The only class that talks to `WebServer`; serves the embedded web UI + the JSON API on port 80 (M5) |
 
 `ferrocell.ino` stays the thin `setup()`/`loop()` entrypoint (composition
-root): it loads settings, attaches the strip, and renders frames.
+root): it loads settings, attaches the strip, boots WiFi + the web UI, and
+renders frames.
 
 ### WiFi (M4, firmware-only)
 
@@ -112,12 +118,52 @@ and the application never calls `WiFi.*` directly.
 firmware only — verified by the `firmware-build` CI job, consistent with the
 other hw-layer classes.
 
+### Web UI + JSON API (M5, firmware-only + pure core)
+
+`UiServer` (`ferrocell/src/net/UiServer.{h,cpp}`) is the **only** class that
+talks to `WebServer`. It serves the self-contained web UI (embedded in PROGMEM)
+and the JSON API on **port 80** in both AP and STA mode:
+
+| What | Value |
+|---|---|
+| UI (STA) | `http://<ip>/` |
+| UI (AP) | `http://192.168.1.1/` |
+| Config page (fallback) | `http://192.168.1.1:8080/` (M4, login admin / pass_ESP) |
+
+**The JSON API** (the contract is defined in the pure core, `core/Api.{h,cpp}`,
+and host-tested by `api_test`):
+
+| Endpoint | Method | Body | Response |
+|---|---|---|---|
+| `/api/state` | GET | — | `{ ok, settings:{ledCount,hue,saturation,brightness,mode,speed}, wifi:{mode,connected,ip,ssid,rssi,apName,configUrl}, fw }` |
+| `/api/set` | POST | any of `{hue,saturation,brightness,mode,speed,ledCount}` | `{ ok, settings:{…}, rebooting? }` — partial update; `ledCount` → save + reboot **only when changed** |
+| `/api/wifi` | POST | `{action:"scan"}` | `{ ok, networks:[{ssid,rssi,locked}] }` |
+| `/api/wifi` | POST | `{action:"save",ssid,password}` | `{ ok, rebooting:true }` |
+| `/api/reboot` | POST | — | `{ ok, rebooting:true }` |
+| `/api/reset` | POST | — | `{ ok, rebooting:true }` (wipes WiFi credentials) |
+
+**The web UI** (`ferrocell/data/index.html` + `ui.css` + `ui.js`) is
+mobile-first, dark, thumb-friendly, and self-contained (no CDN). It has a
+**color wheel** (hue + saturation), brightness + speed sliders, mode chips
+(Solid / Rainbow / Breathing / Gradient / Off), one-tap presets, an LED-count
+stepper (saves + reboots), and a **WiFi tab** (scan / save / reboot / reset).
+The pure helpers in `ui.js` (`FerrocellUI.pure`) are importable by Node so the
+M6 harness can assert the JS↔C++ contract.
+
+**Build note:** the assets are embedded into PROGMEM by
+`tools/make_ui_assets.py` (→ `ferrocell/src/net/ui_assets.h`, committed).
+Re-run it after editing `ferrocell/data/`, then `./build.sh`.
+
+`UiServer` is compiled into the firmware only (verified by `firmware-build`);
+the JSON logic it delegates to is host-tested.
+
 ### Running the core tests (no Arduino, no hardware)
 
 ```bash
 tests/run_tests.sh          # build + run all pure-core unit tests
                             #   (core_test: Color + ColorEngine;
-                            #    settings_test: Settings defaults/normalize)
+                            #    settings_test: Settings defaults/normalize;
+                            #    api_test: Json + Api — the JSON API contract)
 ```
 
 This is the same command the `core-tests` CI job runs on every PR.
@@ -130,26 +176,32 @@ This is the same command the `core-tests` CI job runs on every PR.
 ├── ferrocell/
 │   ├── ferrocell.ino     # thin setup()/loop() entrypoint (M1 boot sketch)
 │   ├── sketch.yaml       # IDE 2.x project record (FQBN + core + lib pins)
+│   ├── data/             # web UI source of truth (M5): index.html + ui.css + ui.js
 │   └── src/
 │       ├── core/         # pure, host-testable core (no Arduino/FastLED)
 │       │   ├── Color.{h,cpp}
 │       │   ├── ColorEngine.{h,cpp}
-│       │   └── Settings.{h,cpp}
+│       │   ├── Settings.{h,cpp}
+│       │   ├── Json.{h,cpp}    # JSON value + parser + serializer (M5)
+│       │   └── Api.{h,cpp}     # the JSON API contract (M5)
 │       ├── hw/           # hardware wrappers (firmware-only)
 │       │   ├── LedController.{h,cpp}
 │       │   └── ConfigStore.{h,cpp}
 │       └── net/          # network layer (firmware-only)
-│           └── WifiManager.{h,cpp}   # WiFi AP + STA (M4)
+│           ├── WifiManager.{h,cpp}   # WiFi AP + STA (M4) + scan/save (M5)
+│           ├── UiServer.{h,cpp}     # web UI + JSON API, port 80 (M5)
+│           └── ui_assets.h          # GENERATED: data/ embedded in PROGMEM
 ├── lib/
 │   └── ESP-Wifi-Config/  # vendored @ v2.2.6 (tabahi/ESP-Wifi-Config)
+├── tools/
+│   └── make_ui_assets.py # regenerates ui_assets.h from ferrocell/data/ (M5)
 ├── tests/
 │   ├── core_test.cpp     # pure-core unit tests (Color + ColorEngine)
 │   ├── settings_test.cpp # Settings defaults + normalize/clamping (M3)
+│   ├── api_test.cpp      # Json + Api — the JSON API contract (M5)
 │   └── run_tests.sh      # host test runner (g++ -std=c++17, no Arduino)
-├── web/                  # UI assets (M5, issue #6)
-├── tests/                # host-side test harness (M6, issue #7)
 └── .github/workflows/
-    └── build.yml         # CI: firmware-build guard
+    └── build.yml         # CI: core-tests + firmware-build
 ```
 
 ## Design notes
@@ -172,5 +224,5 @@ This is the same command the `core-tests` CI job runs on every PR.
 | M2 | #3 | Pure core: `Color` + `ColorEngine` (host-testable, no Arduino deps) |
 | M3 | #4 | Hardware layer: `LedController` + `ConfigStore` (this PR) |
 | M4 | #5 | WiFi: `WifiManager` (AP + STA) |
-| M5 | #6 | Web UI (color wheel) + JSON API: `UiServer` |
+| M5 | #6 | Web UI (color wheel) + JSON API: `UiServer` (this PR) |
 | M6 | #7 | Test harness + full CI (3 jobs) + docs |

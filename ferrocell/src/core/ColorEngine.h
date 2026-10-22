@@ -64,6 +64,27 @@ class ColorEngine {
                             double speed,
                             std::int64_t timeMs) const;
 
+  // Same, but with an explicit saturation in [0,1] (M5, issue #6). This is
+  // the canonical overload the device uses (LedController passes
+  // Settings.saturation()). The 5-arg form above is a convenience that keeps
+  // saturation at 1.0 (fully saturated) so existing callers/tests are
+  // unaffected.
+  std::vector<Color> colors(double hue,
+                            double saturation,
+                            double brightness,
+                            std::size_t ledCount,
+                            double speed,
+                            std::int64_t timeMs) const;
+
+  // Buffer overload with explicit saturation (preferred on the device).
+  void colors(double hue,
+              double saturation,
+              double brightness,
+              std::size_t ledCount,
+              double speed,
+              std::int64_t timeMs,
+              std::vector<Color>& out) const;
+
   // Same computation, but writes into a caller-provided buffer (no per-call
   // allocation). `out` is resized to `ledCount`. Preferred on the device:
   // LedController keeps one buffer and reuses it every frame.
