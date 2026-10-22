@@ -22,6 +22,17 @@
 
   // --- pure helpers (host-testable, no DOM) --------------------------------
   var pure = {
+    // The JSON API endpoints (single source of truth on the JS side; mirrors
+    // the C++ side served by UiServer + core/Api.h). The M6 Node harness
+    // (tests/ui/harness.mjs) asserts this table against the C++ core.
+    endpoints: [
+      { method: "GET",  path: "/api/state" },
+      { method: "POST", path: "/api/set" },
+      { method: "POST", path: "/api/wifi" },
+      { method: "POST", path: "/api/reboot" },
+      { method: "POST", path: "/api/reset" }
+    ],
+
     knownModes: ["solid", "rainbow", "breathing", "gradient", "off"],
 
     // Canonical ranges (mirror ferrocell/src/core/Settings.h).

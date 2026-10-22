@@ -1,0 +1,10 @@
+{
+  "name": "ferrocell-ui-contract",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "Ferrocell web-UI JS-contract harness (M6, issue #7). Dependency-free: `node tests/ui/harness.mjs`.",
+  "scripts": {
+    "test": "node harness.mjs"
+  }
+}
