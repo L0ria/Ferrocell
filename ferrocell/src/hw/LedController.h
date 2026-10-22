@@ -13,6 +13,12 @@
 //      set via setBrightness(); it defaults to 255 (full) so it does not
 //      re-dim the core's brightness.
 //
+//  Dirty-check (issue #14): the loop renders every ~10 ms, but FastLED.show()
+//  is a blocking SPI/DMA wait. In static modes (solid/off/gradient) the frame
+//  is constant, so re-showing it 100x/sec is pure waste that starves the web
+//  server. showIfChanged() compares the computed frame to the last-shown
+//  buffer and only drives the strip when it actually differs.
+//
 //  Depends on FastLED, so it is compiled into the firmware only — NOT part of
 //  the host test harness (the color math it delegates to IS host-tested).
 // =============================================================================
@@ -22,6 +28,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+
+#include "FastLED.h"
 
 #include "../core/Settings.h"
 #include "../core/Color.h"
@@ -41,15 +49,21 @@ class LedController {
   // Render one frame for the given settings at the given time.
   //   timeMs is INJECTED (deterministic): pass millis() on the device.
   // Uses ColorEngine(settings.mode) to compute every LED (core does the math),
-  // writes the result into the strip buffer, and shows it.
+  // writes the result into the strip buffer, and pushes it to the strip ONLY
+  // if the frame differs from the last one shown (issue #14 dirty-check).
   void render(const ferrocell::Settings& s, std::int64_t timeMs);
+
+  // Push the current buffer to the strip ONLY if it differs from the last
+  // frame actually shown. Returns true if the strip was driven, false if the
+  // frame was unchanged (and the show was skipped).
+  bool showIfChanged();
 
   // Set the FastLED global brightness scale (0..255) — a hardware ceiling
   // applied on every show(). Default 255 (full) so it does not re-dim the
   // core's user brightness.
   void setBrightness(std::uint8_t scale);
 
-  // Push the current buffer to the strip.
+  // Push the current buffer to the strip unconditionally (marks it shown).
   void show();
 
   // Turn every LED off (and push).
@@ -62,6 +76,8 @@ class LedController {
   std::size_t count_ = 0;
   // Reusable per-frame buffer (avoids a heap allocation on every render).
   std::vector<ferrocell::Color> frame_;
+  // The last frame actually driven to the strip (for the dirty-check).
+  std::vector<CRGB> lastShown_;
 };
 
 #endif  // FERROCELL_HW_LED_CONTROLLER_H

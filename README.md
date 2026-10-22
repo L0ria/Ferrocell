@@ -180,6 +180,24 @@ stepper (saves + reboots), and a **WiFi tab** (scan / save / reboot / reset).
 The pure helpers in `ui.js` (`FerrocellUI.pure`) are importable by Node so the
 M6 harness can assert the JS↔C++ contract.
 
+**Responsiveness (issue #14):** dragging the color wheel / sliders used to
+fire one `POST /api/set` per pointer event (60-120/sec), and the server
+persisted to NVS (flash) on every one of them — the UI fell behind the
+pointer. The fix (contract-compatible, 3 parts):
+
+- **UI** — `pushSet()` now does an *optimistic* local update (knob / sliders /
+  readouts track the pointer 1:1 instantly) and sends the `/api/set`
+  **debounced** (one request per drag, ~120 ms after the pointer goes quiet;
+  `ledCount` stays immediate because it reboots). The policy is the pure,
+  host-tested `pure.debounceMs(field)` (M6 harness section 8).
+- **Server** — `/api/set` applies settings in RAM immediately (the strip
+  updates at once) and marks a save as *pending*; the NVS write is flushed by
+  `handle()` only once the settings are quiescent (≥500 ms). One drag = one
+  flash save. A `ledCount` change still saves + reboots immediately.
+- **Render loop** — `LedController::showIfChanged()` dirty-check: the
+  blocking `FastLED.show()` only fires when the frame actually differs, so
+  static modes no longer drive the strip 100x/sec and starve the web server.
+
 **Build note:** the assets are embedded into PROGMEM by
 `tools/make_ui_assets.py` (→ `ferrocell/src/net/ui_assets.h`, committed).
 Re-run it after editing `ferrocell/data/`, then `./build.sh`.
@@ -257,6 +275,10 @@ every PR.
 - **3-job CI, no hardware.** `core-tests` (unit, host g++), `ui-contract`
   (Node JS-contract harness + JS<->C++ cross-check), `firmware-build`
   (arduino-cli) — see "CI" above.
+- **Responsive UI (issue #14).** Dragging the wheel / sliders updates the UI
+  optimistically and coalesces the network + flash-write into one request per
+  drag (debounced `/api/set` + deferred NVS save + a `showIfChanged()` dirty
+  check that skips the blocking `FastLED.show()` on unchanged frames).
 
 ## Roadmap
 
