@@ -16,6 +16,8 @@
 #   ./build.sh --upload           # build + flash to the first ESP32 on serial
 #   ./build.sh --port /dev/ttyACM0   # flash to a specific port
 #   ./build.sh --clean            # wipe build/ + the global sketch cache first
+#   ./build.sh --fqbn <fqbn>      # build for a different board/chip (issue #19)
+#   FQBN=<fqbn> ./build.sh        # same, via env var
 #   ARDUINO_JOBS=<n> ./build.sh   # override parallel compile jobs (0 = auto)
 #
 # Output:
@@ -23,7 +25,7 @@
 #
 # Pins (single source of truth for the CLI build):
 #   core   esp32:esp32 @ 3.3.12
-#   FQBN   esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs
+#   FQBN   esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs  (default; --fqbn / FQBN to override)
 #   FastLED 3.10.8
 #   ElegantOTA 4.0.0
 #   ESP-Wifi-Config 2.2.6 (vendored in lib/)
@@ -37,7 +39,9 @@ CORE_VERSION="3.3.12"
 # (issue #16, Q1: we mount no filesystem at runtime — the UI is PROGMEM-embedded
 # and settings live in NVS — so the 1.5 MB SPIFFS of the `default` scheme was
 # dead weight; otanofs gives ~836 KB more headroom per OTA slot for ElegantOTA.)
-FQBN="esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs"
+# FQBN is overridable (issue #19): --fqbn <fqbn> flag > FQBN env var > default.
+# e.g. FQBN=esp32:esp32:esp32s3 ./build.sh   (quick test-build for another S3 board)
+FQBN="${FQBN:-esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs}"
 FASTLED_VERSION="3.10.8"
 ELEGANTOTA_VERSION="4.0.0"
 ARDUINO_CLI_VERSION="1.5.1"
@@ -93,17 +97,29 @@ BIN="${OUT_DIR}/ferrocell.ino.bin"
 UPLOAD=0
 CLEAN=0
 PORT=""
+FQBN_FLAG=""
+prev=""
 for arg in "$@"; do
+  case "${prev}" in
+    --port) PORT="${arg}"; prev=""; continue ;;
+    --fqbn) FQBN_FLAG="${arg}"; prev=""; continue ;;
+  esac
   case "${arg}" in
     --upload)  UPLOAD=1 ;;
     --clean)   CLEAN=1 ;;
-    --port)    : ;;   # value consumed by the next iteration
+    --port)    prev="--port" ;;
+    --fqbn)    prev="--fqbn" ;;
     --port=*)  PORT="${arg#--port=}" ;;
+    --fqbn=*)  FQBN_FLAG="${arg#--fqbn=}" ;;
     -h|--help) grep '^# ' "$0" | sed 's/^# //'; exit 0 ;;
     -*)        echo "unknown flag: ${arg}" >&2; exit 2 ;;
-    *)         [ "${arg}" = "--port" ] && continue; PORT="${arg}" ;;
+    *)         echo "unexpected argument: ${arg}" >&2; exit 2 ;;
   esac
 done
+# A value flag left dangling at end-of-args is a usage error.
+[ -z "${prev}" ] || { echo "missing value for ${prev}" >&2; exit 2; }
+# FQBN precedence: --fqbn flag > FQBN env var (applied above) > default.
+if [ -n "${FQBN_FLAG}" ]; then FQBN="${FQBN_FLAG}"; fi
 
 log()  { printf '\033[1;32m[build]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[build]\033[0m %s\n' "$*" >&2; }
