@@ -45,7 +45,20 @@ void UiServer::begin() {
   Serial.printf("[ui] web UI + JSON API listening on port %d\n", kPort);
 }
 
-void UiServer::handle() { server_.handleClient(); }
+void UiServer::handle() {
+  server_.handleClient();
+  flushPendingSave();
+}
+
+void UiServer::flushPendingSave() {
+  if (!pendingSave_) return;
+  const std::int64_t now = static_cast<std::int64_t>(millis());
+  if (now - lastSetMs_ < kSaveQuiescentMs) return;  // still being adjusted
+  pendingSave_ = false;
+  config_.save(settings_);
+  Serial.printf("[ui] settings saved (quiescent %.0f ms)\n",
+                static_cast<double>(now - lastSetMs_));
+}
 
 // --- helpers ---------------------------------------------------------------
 void UiServer::sendAsset(const char* asset, size_t len, const char* mime) {
@@ -105,21 +118,28 @@ void UiServer::handleSet() {
     return;
   }
 
-  // Apply the new settings (the entrypoint's render loop reads settings()
-  // every frame, so the strip updates immediately) + persist. The reboot
+  // Apply the new settings in RAM (the entrypoint's render loop reads
+  // settings() every frame, so the strip updates immediately). The reboot
   // below only happens when the LED count actually changed.
   settings_ = r.settings;
-  config_.save(settings_);
 
   Value resp = ferrocell::api::stateJson(settings_, wifiInfo());
   if (r.rebooting) {
     resp.set("rebooting", Value::makeBool(true));
-    // Give the response a chance to flush before the reboot.
+    // LED count changed: persist NOW (the reboot is about to happen, so there
+    // is no quiescent window to lose it in) + give the response a chance to
+    // flush before the reboot.
+    config_.save(settings_);
     sendJson(ferrocell::json::dump(resp), 200);
     delay(150);
     Serial.println("[ui] ledCount changed — saving + rebooting");
     ESP.restart();
   } else {
+    // Defer the NVS write (issue #14): a drag fires 60-120 events/sec, and a
+    // flash commit per event is the bottleneck. Mark the save pending;
+    // handle() flushes it once the settings are quiescent.
+    pendingSave_ = true;
+    lastSetMs_ = static_cast<std::int64_t>(millis());
     sendJson(ferrocell::json::dump(resp), 200);
   }
 }

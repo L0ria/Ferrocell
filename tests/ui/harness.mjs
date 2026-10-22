@@ -14,6 +14,8 @@
 //       (the pure core: Color / Settings / Api) and asserts the JS helpers
 //       agree with the C++ core on a shared grid. Skipped (with a warning)
 //       if g++ is unavailable.
+//    8. debounce policy (issue #14) — pure.debounceMs: ledCount immediate,
+//       all other fields coalesced to one request per drag.
 //
 //  Run:   node tests/ui/harness.mjs          (or: npm test in tests/ui/)
 //  Exit:  0 if all checks pass, 1 otherwise (CI-friendly).
@@ -82,6 +84,7 @@ const EXPECTED_PURE = [
   "endpoints", "knownModes", "ranges", "clamp", "clamp01", "wrapHue",
   "hsvToRgb", "rgbToHsv", "wheelToHueSat", "hueSatToWheel", "presets",
   "knownSetFields", "buildSetPayload", "parseState",
+  "kDebounceMs", "debounceMs",
 ];
 for (const k of EXPECTED_PURE) check(k in pure, `pure.${k} exists`);
 eq(pure.knownModes.length, 5, "knownModes has 5 entries");
@@ -314,6 +317,25 @@ if (cpp) {
   eq(JSON.stringify(pure.buildSetPayload({ hue: "red" })), '{"hue":"red"}',
      "JS passes hue through (C++ type-checks it)");
 }
+
+// ===========================================================================
+section("8. debounce policy (issue #14 — one request per drag)");
+check(typeof pure.debounceMs === "function", "pure.debounceMs is a function");
+check(typeof pure.kDebounceMs === "number", "pure.kDebounceMs is a number");
+eq(pure.kDebounceMs, 120, "kDebounceMs is 120 ms");
+eq(pure.debounceMs("ledCount"), 0, "debounceMs(ledCount) = 0 (immediate — it reboots)");
+eq(pure.debounceMs("hue"), pure.kDebounceMs, "debounceMs(hue) = kDebounceMs");
+eq(pure.debounceMs("saturation"), pure.kDebounceMs, "debounceMs(saturation) = kDebounceMs");
+eq(pure.debounceMs("brightness"), pure.kDebounceMs, "debounceMs(brightness) = kDebounceMs");
+eq(pure.debounceMs("mode"), pure.kDebounceMs, "debounceMs(mode) = kDebounceMs");
+eq(pure.debounceMs("speed"), pure.kDebounceMs, "debounceMs(speed) = kDebounceMs");
+// The policy must match the known set fields exactly (no gaps, no extras).
+for (const f of pure.knownSetFields) {
+  check(typeof pure.debounceMs(f) === "number", `debounceMs(${f}) is a number`);
+}
+// ledCount is the ONLY immediate field (the only one that reboots).
+const immediate = pure.knownSetFields.filter((f) => pure.debounceMs(f) === 0);
+eq(JSON.stringify(immediate), JSON.stringify(["ledCount"]), "only ledCount is immediate");
 
 // ===========================================================================
 console.log("");

@@ -131,6 +131,14 @@
       return out;
     },
 
+    // Debounce policy for /api/set (issue #14): coalesce a drag into ONE
+    // request. ledCount flushes immediately (it reboots — no quiescent window);
+    // every other field waits kDebounceMs for the pointer to go quiet.
+    kDebounceMs: 120,
+    debounceMs: function (field) {
+      return (field === "ledCount") ? 0 : pure.kDebounceMs;
+    },
+
     // Normalize a /api/state document into a flat, safe view for the UI.
     parseState: function (doc) {
       var s = (doc && doc.settings) || {};
@@ -183,6 +191,8 @@
       el: {},
       state: null,
       wheel: { size: 240, dragging: false },
+      _pending: {},
+      _setTimer: null,
 
       init: function () {
         this.cacheDom();
@@ -278,12 +288,53 @@
         this.pushSet({ hue: hs.hue, saturation: hs.saturation });
       },
 
+      // Apply a partial settings change (issue #14): an OPTIMISTIC local
+      // update (instant 1:1 feedback) + a DEBOUNCED, coalesced /api/set flush
+      // (one request per drag, not one per pointer event).
       pushSet: function (partial) {
+        this.applyLocal(partial);
+        if (!partial || typeof partial !== "object") return;
+        if (this._pending === undefined || this._pending === null) this._pending = {};
+        var delay = pure.kDebounceMs;
+        for (var k in partial) {
+          if (!Object.prototype.hasOwnProperty.call(partial, k)) continue;
+          this._pending[k] = partial[k];
+          var d = pure.debounceMs(k);
+          if (d < delay) delay = d;
+        }
         var self = this;
-        api.set(partial).then(function (doc) {
+        clearTimeout(this._setTimer);
+        if (delay <= 0) {
+          this._flushSet();
+        } else {
+          this._setTimer = setTimeout(function () { self._flushSet(); }, delay);
+        }
+      },
+
+      // Optimistic local update: reflect the change in the UI immediately so
+      // the knob / sliders / readouts track the pointer 1:1 (issue #14).
+      applyLocal: function (partial) {
+        if (!this.state || !partial || typeof partial !== "object") return;
+        if (partial.hue !== undefined) this.state.hue = Number(partial.hue);
+        if (partial.saturation !== undefined) this.state.saturation = Number(partial.saturation);
+        if (partial.brightness !== undefined) this.state.brightness = Number(partial.brightness);
+        if (partial.mode !== undefined) this.state.mode = String(partial.mode);
+        if (partial.speed !== undefined) this.state.speed = Number(partial.speed);
+        if (partial.ledCount !== undefined) this.state.ledCount = Number(partial.ledCount);
+        this.render();
+      },
+
+      // Flush the coalesced pending /api/set (one request per drag). The
+      // optimistic state stays authoritative on the client (the UI only ever
+      // sends in-range values, so there is nothing to re-adopt from the server).
+      _flushSet: function () {
+        var self = this;
+        if (!this._pending) return;
+        var payload = this._pending;
+        if (!Object.keys(payload).length) return;
+        this._pending = {};
+        api.set(payload).then(function (doc) {
           if (doc && doc.ok) {
-            self.state = pure.parseState(doc);
-            self.render();
             if (doc.rebooting) { self.toast("Saving \u2014 rebooting\u2026", "ok"); }
           } else {
             self.toast((doc && doc.error) || "set failed", "err");

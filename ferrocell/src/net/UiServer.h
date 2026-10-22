@@ -21,6 +21,13 @@
 //  The M4 config page (ESP-Wifi-Config) stays up PERPETUALLY on port 8080 as
 //  the fallback configurator; UiServer owns port 80.
 //
+//  Deferred persistence (issue #14): a drag fires 60-120 /api/set events/sec.
+//  Persisting to NVS (flash) on every one of them is the bottleneck. So
+//  /api/set applies settings in RAM immediately (LEDs update at once) and
+//  marks a save as PENDING; the actual NVS write is flushed by handle() only
+//  once the settings are quiescent (>= kSaveQuiescentMs since the last set).
+//  A ledCount change still saves + reboots immediately (no loss window).
+//
 //  Depends on the Arduino core (WebServer), so it is compiled into the
 //  firmware only — NOT part of the host test harness (verified by the
 //  `firmware-build` CI job). The JSON logic it delegates to IS host-tested.
@@ -47,6 +54,10 @@ class UiServer {
   // is on 8080, so there is no collision.
   static constexpr int kPort = 80;
 
+  // Quiescent window before a pending NVS save is flushed (issue #14). One
+  // drag = one save, not one save per pointer event.
+  static constexpr std::int64_t kSaveQuiescentMs = 500;
+
   // Wire the server to the app modules. `config` persists settings, `leds`
   // renders the strip after a change, `wifi` provides status + scan/save.
   UiServer(ConfigStore& config, LedController& leds, WifiManager& wifi);
@@ -55,7 +66,8 @@ class UiServer {
   // setup() (after WifiManager::begin()).
   void begin();
 
-  // Non-blocking pump: serve one client. Call every loop() iteration.
+  // Non-blocking pump: serve one client, then flush a pending NVS save if the
+  // settings have been quiescent long enough. Call every loop() iteration.
   void handle();
 
   // The live settings (kept in sync with the app's g_settings by the
@@ -79,12 +91,18 @@ class UiServer {
   void sendJson(const std::string& body, int code = 200);
   std::string readBody();
   ferrocell::api::WifiInfo wifiInfo() const;
+  // Flush a pending NVS save if quiescent (issue #14). No-op when nothing is
+  // pending or the quiescent window has not elapsed.
+  void flushPendingSave();
 
   ConfigStore& config_;
   LedController& leds_;
   WifiManager& wifi_;
   ferrocell::Settings settings_;
   WebServer server_;
+  // Deferred-persistence state (issue #14).
+  bool pendingSave_ = false;
+  std::int64_t lastSetMs_ = 0;
 };
 
 #endif  // FERROCELL_NET_UI_SERVER_H
