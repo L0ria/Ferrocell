@@ -161,25 +161,28 @@ check(noThrow, "parseState tolerates null/string/undefined");
 // ===========================================================================
 section("4. color-wheel -> hue/saturation mapping");
 const R = 100;
-// Center = white (saturation 0); edge = full saturation; hue = angle (0 at +x, clockwise).
+// Center = white (saturation 0); edge = full saturation. hue = angle in
+// degrees, 0 at 12 o'clock (top), increasing clockwise on screen (y grows
+// downward) — matching the CSS conic-gradient: red top, green ~4 o'clock,
+// blue ~8 o'clock (issue #21).
 eq(pure.wheelToHueSat(0, 0, R).saturation, 0, "wheel center -> sat 0");
-eq(pure.wheelToHueSat(R, 0, R).hue, 0, "wheel +x -> hue 0");
+eq(pure.wheelToHueSat(0, -R, R).hue, 0, "wheel top -> hue 0 (red)");
+eq(pure.wheelToHueSat(R, 0, R).hue, 90, "wheel right -> hue 90");
 eq(pure.wheelToHueSat(R, 0, R).saturation, 1, "wheel edge -> sat 1");
-eq(pure.wheelToHueSat(0, R, R).hue, 90, "wheel +y -> hue 90 (clockwise)");
-eq(pure.wheelToHueSat(-R, 0, R).hue, 180, "wheel -x -> hue 180");
-eq(pure.wheelToHueSat(0, -R, R).hue, 270, "wheel -y -> hue 270");
+eq(pure.wheelToHueSat(0, R, R).hue, 180, "wheel bottom -> hue 180");
+eq(pure.wheelToHueSat(-R, 0, R).hue, 270, "wheel left -> hue 270");
 const diag = Math.SQRT1_2 * R;
-eq(pure.wheelToHueSat(diag, diag, R).hue, 45, "wheel 45deg -> hue 45");
+eq(pure.wheelToHueSat(diag, diag, R).hue, 135, "wheel bottom-right -> hue 135");
 near(pure.wheelToHueSat(R / 2, 0, R).saturation, 0.5, 1e-9, "wheel half-radius -> sat 0.5");
 check(pure.wheelToHueSat(10 * R, 0, R).saturation <= 1, "wheel far outside -> sat clamped <= 1");
 
 // hueSatToWheel is the inverse; round-trips within tolerance.
 const p0 = pure.hueSatToWheel(0, 1, R);
-eq(p0.x, R, "hueSatToWheel(0,1) x=R");
-eq(p0.y, 0, "hueSatToWheel(0,1) y=0");
+near(p0.x, 0, 1e-9, "hueSatToWheel(0,1) x=0 (top)");
+near(p0.y, -R, 1e-9, "hueSatToWheel(0,1) y=-R (top)");
 const p90 = pure.hueSatToWheel(90, 0.5, R);
-near(p90.x, 0, 1e-9, "hueSatToWheel(90,0.5) x=0");
-near(p90.y, R / 2, 1e-9, "hueSatToWheel(90,0.5) y=R/2");
+near(p90.x, R / 2, 1e-9, "hueSatToWheel(90,0.5) x=R/2 (right)");
+near(p90.y, 0, 1e-9, "hueSatToWheel(90,0.5) y=0 (right)");
 const pC = pure.hueSatToWheel(30, 0, R);
 near(pC.x, 0, 1e-9, "hueSatToWheel(sat=0) x=0");
 near(pC.y, 0, 1e-9, "hueSatToWheel(sat=0) y=0");
@@ -357,6 +360,34 @@ eq(pure.otaPortalPath, "/update", "otaPortalPath is /update");
 // The OTA routes must NOT collide with the JSON API endpoints.
 const apiSet = new Set(EP.map((e) => `${e.method} ${e.path}`));
 for (const e of OTA) check(!apiSet.has(`${e.method} ${e.path}`), `no collision: ${e.method} ${e.path}`);
+
+// ===========================================================================
+section("10. R/G/B readout (issue #21 — shows exactly what the strip emits)");
+// The UI readout (rVal/gVal/bVal) is filled from
+// pure.hsvToRgb(hue, saturation, brightness) — the color at the CURRENT
+// brightness, i.e. exactly what the LED strip shows.
+const readoutStates = [
+  { hue: 0, saturation: 1, brightness: 0.9 },   // Red preset
+  { hue: 120, saturation: 0.8, brightness: 0.7 }, // SAMPLE state
+  { hue: 240, saturation: 1, brightness: 0.9 },  // Blue preset
+  { hue: 30, saturation: 0.8, brightness: 0.7 }, // Warm preset
+  { hue: 0, saturation: 1, brightness: 0 },      // Off preset
+];
+for (const stt of readoutStates) {
+  const rgb = pure.hsvToRgb(stt.hue, stt.saturation, stt.brightness);
+  check(
+    Number.isInteger(rgb.r) && Number.isInteger(rgb.g) && Number.isInteger(rgb.b) &&
+      rgb.r >= 0 && rgb.r <= 255 && rgb.g >= 0 && rgb.g <= 255 && rgb.b >= 0 && rgb.b <= 255,
+    `readout rgb in range for ${JSON.stringify(stt)} (got ${rgb.r},${rgb.g},${rgb.b})`
+  );
+}
+eq(pure.hsvToRgb(0, 1, 0.9).r, 230, "readout red at 90% brightness -> r=230");
+eq(pure.hsvToRgb(0, 1, 0.9).g, 0, "readout red -> g=0");
+eq(pure.hsvToRgb(0, 1, 0.9).b, 0, "readout red -> b=0");
+eq(pure.hsvToRgb(120, 0.8, 0.7).g, 179, "readout SAMPLE state -> g=179 (matches C++ Color)");
+eq(pure.hsvToRgb(0, 1, 0).r, 0, "readout off -> r=0");
+eq(pure.hsvToRgb(0, 1, 0).g, 0, "readout off -> g=0");
+eq(pure.hsvToRgb(0, 1, 0).b, 0, "readout off -> b=0");
 
 // ===========================================================================
 console.log("");

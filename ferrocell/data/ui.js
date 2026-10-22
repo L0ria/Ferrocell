@@ -102,12 +102,14 @@
     },
 
     // Wheel mapping: center = white (saturation 0), edge = full saturation.
-    // hue = angle (degrees, 0 at +x axis, increasing clockwise on screen).
-    // (x,y) are pixel offsets from the wheel center; r is the wheel radius.
+    // hue = angle in degrees, 0 at 12 o'clock (top), increasing clockwise on
+    // screen — matching the CSS conic-gradient (red at top, green ~4 o'clock,
+    // blue ~8 o'clock). (x,y) are pixel offsets from the wheel center; r is the
+    // wheel radius. y grows downward on screen.
     wheelToHueSat: function (dx, dy, r) {
       var dist = Math.sqrt(dx * dx + dy * dy);
       var sat = pure.clamp01(dist / r);
-      var hue = (Math.atan2(dy, dx) * 180) / Math.PI;
+      var hue = (Math.atan2(dx, -dy) * 180) / Math.PI;
       if (hue < 0) hue += 360;
       return { hue: hue, saturation: sat };
     },
@@ -115,7 +117,7 @@
     hueSatToWheel: function (hue, saturation, r) {
       var rad = (hue * Math.PI) / 180;
       var dist = saturation * r;
-      return { x: Math.cos(rad) * dist, y: Math.sin(rad) * dist };
+      return { x: Math.sin(rad) * dist, y: -Math.cos(rad) * dist };
     },
 
     // One-tap presets (client-side bundles sent as a single /api/set).
@@ -212,7 +214,7 @@
       },
 
       cacheDom: function () {
-        var ids = ["wheel", "wheelKnob", "hueVal", "satVal", "swatch", "bright", "brightVal",
+        var ids = ["wheel", "wheelKnob", "hueVal", "satVal", "rVal", "gVal", "bVal", "swatch", "bright", "brightVal",
                    "speed", "speedVal", "modes", "presets", "ledMinus", "ledPlus",
                    "ledCount", "saveLeds", "status", "statusText", "tabLight", "tabWifi",
                    "tabUpdate", "paneLight", "paneWifi", "paneUpdate",
@@ -244,6 +246,10 @@
         this.swatchColor(st.hue, st.saturation, st.brightness);
         this.el.hueVal.textContent = Math.round(st.hue) + "\u00b0";
         this.el.satVal.textContent = Math.round(st.saturation * 100) + "%";
+        var rgb = pure.hsvToRgb(st.hue, st.saturation, st.brightness);
+        this.el.rVal.textContent = rgb.r;
+        this.el.gVal.textContent = rgb.g;
+        this.el.bVal.textContent = rgb.b;
         this.el.bright.value = Math.round(st.brightness * 100);
         this.el.brightVal.textContent = Math.round(st.brightness * 100) + "%";
         this.el.speed.value = st.speed;
