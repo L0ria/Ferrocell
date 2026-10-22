@@ -70,7 +70,7 @@ FastLED**, and compiles. Re-running is a no-op for the installs.
 | Core | `esp32:esp32` **3.3.12** |
 | FQBN | `esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs` (default — override with `--fqbn` / `FQBN` in `build.sh`/`flash.sh`) |
 | Partition | `otanofs` — two **1.94 MiB** OTA slots, no SPIFFS (issue #16; we mount no runtime FS) |
-| FastLED | **3.10.8** |
+| FastLED | **3.10.6** (pinned down: 3.10.7+/3.10.8 have a RISC-V C3/C6 compile regression — issue #23) |
 | ElegantOTA | **4.0.0** (OTA over WiFi, issue #16) |
 | ESP-Wifi-Config | **2.2.6** (vendored in `lib/ESP-Wifi-Config`) |
 | AP IP | `192.168.1.1` (library default) — config page at `http://192.168.1.1:8080/` |
@@ -99,7 +99,7 @@ The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
    successful upload; the saved WiFi config is kept (it lives in NVS, which
    OTA never touches).
 
-## CI (3 jobs, no hardware)
+## CI (4 jobs, no hardware)
 
 `.github/workflows/build.yml` runs on every PR (and on `main`):
 
@@ -107,11 +107,13 @@ The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
 |---|---|---|
 | `core-tests` | **Unit (host)** — builds + runs the pure-core unit tests (`tests/unit/*.cpp`: `Color`, `ColorEngine`, `Settings`, `Json`, `Api`) with `g++ -std=c++17` | `bash tests/run_tests.sh` |
 | `ui-contract` | **UI contract (Node)** — runs the dependency-free harness against `ferrocell/data/ui.js` (endpoints, payload shapes, wheel mapping, HSV<->RGB, presets) **plus the JS<->C++ cross-check** (compiles + runs the pure-core probe) | `node tests/ui/harness.mjs` |
-| `firmware-build` | **Firmware build** — the real `./build.sh` (arduino-cli + core 3.3.12 + FastLED 3.10.8 + ElegantOTA 4.0.0 + vendored ESP-Wifi-Config) for the S3-Zero FQBN (`PartitionScheme=otanofs`) | `./build.sh` |
+| `firmware-build` | **Firmware build** — the real `./build.sh` (arduino-cli + core 3.3.12 + FastLED 3.10.6 + ElegantOTA 4.0.0 + vendored ESP-Wifi-Config) for the S3-Zero FQBN (`PartitionScheme=otanofs`) | `./build.sh` |
+| `firmware-build-c3` | **Firmware build (RISC-V, issue #23)** — the same sketch for an ESP32-C3 (`nologo_esp32c3_super_mini`, `PartitionScheme=no_ota`); catches the C3/C6-class failures (FastLED RISC-V regression, stale-library versions) that only surface on a non-default chip | `FQBN=esp32:esp32:nologo_esp32c3_super_mini:PartitionScheme=no_ota ./build.sh` |
 
 A PR that breaks `Color` / `ColorEngine` fails `core-tests` (and the
 cross-check); one that breaks `ui.js` fails `ui-contract`; one that breaks
-the build fails `firmware-build`.
+the S3 build fails `firmware-build`; one that breaks the RISC-V (C3/C6)
+build path fails `firmware-build-c3`.
 
 ## Core (pure, host-testable)
 

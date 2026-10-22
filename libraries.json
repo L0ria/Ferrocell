@@ -1,9 +1,10 @@
 {
   "libs": [
     {
-      "name": "FastLED@3.10.8",
-      "version": "3.10.8",
-      "url": "https://github.com/FastLED/FastLED"
+      "name": "FastLED@3.10.6",
+      "version": "3.10.6",
+      "url": "https://github.com/FastLED/FastLED",
+      "note": "pinned 3.10.6 (issue #23): 3.10.7+/3.10.8 have a RISC-V (C3/C6) compile regression; bump once upstream fixes it"
     },
     {
       "name": "ElegantOTA@4.0.0",

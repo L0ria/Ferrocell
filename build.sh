@@ -5,7 +5,7 @@
 # Standalone, idempotent build helper mirroring a-i-a-d/Tankie. It:
 #   1. ensures arduino-cli is available,
 #   2. registers the esp32 board index and installs the PINNED core (3.3.12),
-#   3. installs the pinned external libraries (FastLED 3.10.8, ElegantOTA
+#   3. installs the pinned external libraries (FastLED 3.10.6, ElegantOTA
 #      4.0.0) — the ESP-Wifi-Config dependency is vendored in
 #      lib/ESP-Wifi-Config (v2.2.6),
 #   4. compiles the `ferrocell` sketch for the Waveshare ESP32-S3-Zero FQBN,
@@ -26,7 +26,7 @@
 # Pins (single source of truth for the CLI build):
 #   core   esp32:esp32 @ 3.3.12
 #   FQBN   esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs  (default; --fqbn / FQBN to override)
-#   FastLED 3.10.8
+#   FastLED 3.10.6
 #   ElegantOTA 4.0.0
 #   ESP-Wifi-Config 2.2.6 (vendored in lib/)
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ CORE_VERSION="3.3.12"
 # FQBN is overridable (issue #19): --fqbn <fqbn> flag > FQBN env var > default.
 # e.g. FQBN=esp32:esp32:esp32s3 ./build.sh   (quick test-build for another S3 board)
 FQBN="${FQBN:-esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs}"
-FASTLED_VERSION="3.10.8"
+FASTLED_VERSION="3.10.6"
 ELEGANTOTA_VERSION="4.0.0"
 ARDUINO_CLI_VERSION="1.5.1"
 ESP32_INDEX_URL="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json"
@@ -157,7 +157,7 @@ else
   log "core ${CORE_PKG}@${CORE_VERSION} already installed"
 fi
 
-# --- 2. pinned external library (FastLED) -----------------------------------
+# --- 2. pinned external libraries (version-aware) ---------------------------
 # ESP-Wifi-Config is vendored in lib/ESP-Wifi-Config (v2.2.6) — it is NOT a
 # registry lib, so there is nothing to `lib install`. It is passed to the
 # compile explicitly via `--libraries "${SCRIPT_DIR}/lib"` (arduino-cli does
@@ -165,25 +165,131 @@ fi
 if [ ! -f "${SCRIPT_DIR}/lib/ESP-Wifi-Config/library.properties" ]; then
   die "vendored lib missing: lib/ESP-Wifi-Config (expected v2.2.6)"
 fi
-if ! "${ARDUINO_CLI}" lib list 2>/dev/null | awk '{print $1}' | grep -qx "FastLED"; then
-  log "installing FastLED@${FASTLED_VERSION} …"
-  "${ARDUINO_CLI}" lib update-index >/dev/null 2>&1 || true
-  "${ARDUINO_CLI}" lib install "FastLED@${FASTLED_VERSION}"
-else
-  log "FastLED already installed"
-fi
 
-# --- 2b. pinned external library (ElegantOTA) ------------------------------
-# OTA updates over WiFi (issue #16): the /update portal + /ota/* routes on the
-# same WebServer UiServer owns (port 80, STA + AP). Zero non-core dependencies;
-# the portal is a PROGMEM array (no filesystem needed — compatible with the
-# PROGMEM-embedded UI).
-if ! "${ARDUINO_CLI}" lib list 2>/dev/null | awk '{print $1}' | grep -qx "ElegantOTA"; then
-  log "installing ElegantOTA@${ELEGANTOTA_VERSION} …"
-  "${ARDUINO_CLI}" lib update-index >/dev/null 2>&1 || true
-  "${ARDUINO_CLI}" lib install "ElegantOTA@${ELEGANTOTA_VERSION}"
-else
-  log "ElegantOTA already installed"
+# ensure_lib <Name> <Version> — install the EXACT pinned version of a registry
+# library. The old check compared NAMES only (`lib list | grep -qx FastLED`),
+# so a machine with a DIFFERENT version pre-installed (e.g. ElegantOTA 3.1.7,
+# the *async* build) silently kept the wrong one and the build failed with
+# `WebServer*`/`HTTP_*`/RISC-V errors (issue #23). Now: missing OR different
+# version -> `lib install Name@Version` (arduino-cli replaces the old one);
+# exact match -> skip (idempotent, no re-download).
+ensure_lib() {
+  local name="$1" want="$2" have
+  have="$(python3 - "${ARDUINO_CLI}" "${name}" <<'PY' 2>/dev/null || true
+import json, subprocess, sys
+try:
+    out = subprocess.run([sys.argv[1], "lib", "list", "--format", "json"],
+                         capture_output=True, text=True, timeout=60).stdout
+    for lib in json.loads(out).get("installed_libraries", []):
+        info = lib.get("library", {})
+        if info.get("name") == sys.argv[2]:
+            print(info.get("version", ""))
+            break
+except Exception:
+    pass
+PY
+)"
+  if [ "${have}" = "${want}" ]; then
+    log "${name}@${want} already installed"
+  else
+    log "installing ${name}@${want} (installed: ${have:-none}) …"
+    "${ARDUINO_CLI}" lib update-index >/dev/null 2>&1 || true
+    "${ARDUINO_CLI}" lib install "${name}@${want}"
+  fi
+}
+ensure_lib "FastLED"    "${FASTLED_VERSION}"
+# ElegantOTA — OTA updates over WiFi (issue #16): the /update portal + /ota/*
+# routes on the same WebServer UiServer owns (port 80, STA + AP). Zero
+# non-core dependencies; the portal is a PROGMEM array (no filesystem needed —
+# compatible with the PROGMEM-embedded UI). MUST be the sync 4.0.0 build.
+ensure_lib "ElegantOTA" "${ELEGANTOTA_VERSION}"
+
+# --- 2c. partition scheme auto-pick (issue #23, A4) -------------------------
+# Some boards (e.g. the ESP32-C3 "nologo" family) default to a ~1.2 MB app
+# slot, but this firmware is ~1.4 MB — the build then dies with "text section
+# exceeds available space in board". When the FQBN does NOT already pin a
+# PartitionScheme and the board's default slot is too small, offer a bigger
+# one (recommended: no_ota = 2 MB, keeps the otadata partition so ElegantOTA
+# still works). Interactive: confirm / abort / type a scheme. Non-interactive
+# (CI, piped stdin): auto-accept the recommendation with a warning.
+FIRMWARE_MIN_BYTES=1572864   # ~1.5 MB — headroom above the ~1.40 MB firmware
+RECOMMENDED_SCHEME="no_ota"
+
+board_max_app_bytes() {
+  python3 - "${ARDUINO_CLI}" "$1" <<'PY' 2>/dev/null || true
+import json, subprocess, sys
+try:
+    out = subprocess.run([sys.argv[1], "board", "details", "--fqbn", sys.argv[2],
+                          "--format", "json"],
+                         capture_output=True, text=True, timeout=60).stdout
+    props = dict(x.split("=", 1) for x in json.loads(out).get("build_properties", [])
+                 if "=" in x)
+    print(int(props.get("upload.maximum_size", 0)))
+except Exception:
+    pass
+PY
+}
+
+board_scheme_options() {
+  python3 - "${ARDUINO_CLI}" "$1" <<'PY' 2>/dev/null || true
+import json, subprocess, sys
+try:
+    out = subprocess.run([sys.argv[1], "board", "details", "--fqbn", sys.argv[2],
+                          "--format", "json"],
+                         capture_output=True, text=True, timeout=60).stdout
+    for opt in json.loads(out).get("config_options", []):
+        if opt.get("option") == "PartitionScheme":
+            for v in opt.get("values", []):
+                print(v.get("value", ""))
+except Exception:
+    pass
+PY
+}
+
+if [[ "${FQBN}" != *":PartitionScheme="* ]]; then
+  BOARD_MAX="$(board_max_app_bytes "${FQBN}")"
+  if [ -n "${BOARD_MAX}" ] && [ "${BOARD_MAX}" -lt "${FIRMWARE_MIN_BYTES}" ] 2>/dev/null; then
+    SCHEMES="$(board_scheme_options "${FQBN}")"
+    # The recommendation must be a valid option for THIS board (no_fs is not,
+    # e.g., on the C3 menu); fall back to other big-app schemes in order.
+    CHOOSE="${RECOMMENDED_SCHEME}"
+    for cand in no_ota noota_ffat huge_app; do
+      if printf '%s
+' "${SCHEMES}" | grep -qx "${cand}"; then CHOOSE="${cand}"; break; fi
+    done
+    if ! printf '%s
+' "${SCHEMES}" | grep -qx "${CHOOSE}"; then
+      CHOOSE=""   # no known big-app scheme on this board — ask the user
+    fi
+    if [ -t 0 ] && [ -t 1 ]; then
+      echo
+      warn "board default partition slot is $(( BOARD_MAX / 1024 )) KB — the firmware needs ~$(( FIRMWARE_MIN_BYTES / 1024 )) KB"
+      [ -n "${CHOOSE}" ] && warn "recommended scheme: ${CHOOSE} (2 MB APP — keeps otadata, so ElegantOTA still works)"
+      [ -z "${CHOOSE}" ] && warn "no known big-app scheme found — please type a scheme name (see the board's PartitionScheme menu)"
+      printf '[build] valid schemes: %s
+' "$(printf '%s' "${SCHEMES}" | tr '
+' ' ')" >&2
+      printf '[build] use scheme [%s / n / other]: ' "${CHOOSE:-<none>}" >&2
+      read -r answer || answer="n"
+      case "${answer}" in
+        ""|y|yes) answer="${CHOOSE}" ;;
+        n|no)     die "aborted — re-run with e.g. --fqbn ${FQBN}:PartitionScheme=<scheme>" ;;
+      esac
+      if [ -z "${answer}" ] || ! printf '%s
+' "${SCHEMES}" | grep -qx "${answer}"; then
+        die "unknown scheme '${answer}' — pick one of: $(printf '%s' "${SCHEMES}" | tr '
+' ' ')"
+      fi
+      FQBN="${FQBN}:PartitionScheme=${answer}"
+      log "using PartitionScheme=${answer} (user choice)"
+    else
+      if [ -z "${CHOOSE}" ]; then
+        die "board default slot is too small ($(( BOARD_MAX / 1024 )) KB) and no big-app scheme is known — re-run with --fqbn ${FQBN}:PartitionScheme=<scheme>"
+      fi
+      warn "non-interactive: auto-selecting PartitionScheme=${CHOOSE} (default slot too small: $(( BOARD_MAX / 1024 )) KB < ~$(( FIRMWARE_MIN_BYTES / 1024 )) KB)"
+      FQBN="${FQBN}:PartitionScheme=${CHOOSE}"
+    fi
+  fi
 fi
 
 # --- 3. preflight -----------------------------------------------------------

@@ -11,7 +11,7 @@ profiles:
     platforms:
       - platform: esp32:esp32 (3.3.12)
     libraries:
-      - FastLED (3.10.8)
+      - FastLED (3.10.6)   # pinned down (issue #23): 3.10.7+ has a RISC-V regression
       - ElegantOTA (4.0.0)   # OTA over WiFi (issue #16)
       # ESP-Wifi-Config is vendored in lib/ESP-Wifi-Config (v2.2.6) — not a
       # registry lib, so it is not listed here (see libraries.json).
