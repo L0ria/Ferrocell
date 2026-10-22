@@ -38,7 +38,7 @@ void LedController::render(const ferrocell::Settings& s, std::int64_t timeMs) {
   // The pure core computes every LED color (the ONLY place HSV->RGB happens),
   // writing into our reusable buffer (no per-frame allocation).
   const ferrocell::ColorEngine engine(s.mode().c_str());
-  engine.colors(s.hue(), s.brightness(), count_, s.speed(), timeMs, frame_);
+  engine.colors(s.hue(), s.saturation(), s.brightness(), count_, s.speed(), timeMs, frame_);
 
   // Copy the computed colors into the strip buffer (r/g/b are 0..255).
   for (std::size_t i = 0; i < count_; ++i) {

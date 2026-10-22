@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "ESPWifiConfig.h"
 
@@ -81,6 +82,25 @@ class WifiManager {
   // reboots and comes back in AP mode, ready to be configured again.
   // (The library performs the reboot; this call does not return.)
   void resetConfig();
+
+  // --- scan / save (M5, issue #6) ------------------------------------------
+  // A network found by scan().
+  struct Network {
+    std::string ssid;
+    int rssi = 0;          // dBm
+    bool locked = false;   // true if it requires a password
+  };
+
+  // Run a live scan and return the found networks (capped at kMaxScanResults,
+  // strongest first). Blocking (~2 s) — only called from the /api/wifi scan
+  // action. Returns an empty vector on failure.
+  static constexpr int kMaxScanResults = 16;
+  std::vector<Network> scan();
+
+  // Persist new WiFi credentials (SSID + password) and reboot into STA mode.
+  // Uses the library's own settings store (the same one its config page
+  // writes), so the device reconnects on boot. This call does not return.
+  void save(const std::string& ssid, const std::string& password);
 
  private:
   ESPWifiConfig wifi_;

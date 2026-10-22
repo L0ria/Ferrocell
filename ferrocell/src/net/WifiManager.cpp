@@ -10,6 +10,9 @@
 
 #include <Arduino.h>
 
+#include <cstdio>
+#include <cstring>
+
 namespace {
 // The library's fallback-SSID fields are `char*` (non-const); it only reads
 // them (and only when non-empty), so static empty buffers are a safe "no
@@ -99,4 +102,38 @@ void WifiManager::resetConfig() {
   Serial.println("[wifi] resetting saved WiFi credentials (reboot follows)");
   wifi_.ESP_reset_settings();
   ESP.restart();  // the library's own reset path does the same
+}
+
+std::vector<WifiManager::Network> WifiManager::scan() {
+  std::vector<Network> out;
+  // A live scan. On the ESP32 the base radio can scan while the softAP is up,
+  // so this does NOT tear down the AP (which would drop the in-flight request
+  // and the config page). If the scan finds nothing, the caller reports an
+  // empty list and the user can fall back to the :8080 config page.
+  const int n = WiFi.scanNetworks();
+  if (n > 0) {
+    for (int i = 0; i < n && static_cast<int>(out.size()) < kMaxScanResults; ++i) {
+      Network net;
+      net.ssid = std::string(WiFi.SSID(i).c_str());
+      net.rssi = WiFi.RSSI(i);
+      net.locked = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+      out.push_back(std::move(net));
+    }
+  }
+  Serial.printf("[wifi] scan: %d network(s) found\n", static_cast<int>(out.size()));
+  return out;
+}
+
+void WifiManager::save(const std::string& ssid, const std::string& password) {
+  Serial.printf("[wifi] saving credentials ssid=%s (reboot follows)\n", ssid.c_str());
+  // Persist into the library's own settings store (the same fields its config
+  // page writes) so the device reconnects on boot. Truncate to the library's
+  // fixed field size to stay within its layout.
+  char* ssidBuf = wifi_.setting[WIFI_SSID].value;
+  char* passBuf = wifi_.setting[WIFI_PASS].value;
+  const size_t maxLen = sizeof(wifi_.setting[WIFI_SSID].value);
+  std::snprintf(ssidBuf, maxLen, "%s", ssid.c_str());
+  std::snprintf(passBuf, maxLen, "%s", password.c_str());
+  wifi_.ESP_save_settings();
+  ESP.restart();
 }

@@ -1,8 +1,9 @@
 # CI for the Ferrocell ESP32-S3-Zero firmware (issues #2 M1, #3 M2, #4 M3).
 #
 # core-tests     — builds & runs the PURE-core unit tests (Color + ColorEngine
-#                  + Settings) with the system g++ (no Arduino toolchain, no
-#                  hardware). Proves the core is host-testable: `g++ -std=c++17`.
+#                  + Settings + Json + Api) with the system g++ (no Arduino
+#                  toolchain, no hardware). Proves the core is host-testable:
+#                  `g++ -std=c++17`. Includes api_test (the M5 JSON API contract).
 #
 # firmware-build — builds the REAL firmware with ./build.sh (arduino-cli +
 #                  esp32 core 3.3.12, esp32:esp32:waveshare_esp32_s3_zero,
@@ -22,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: "Run the pure-core unit tests (Color, ColorEngine, Settings; g++ -std=c++17, no Arduino)"
+      - name: "Run the pure-core unit tests (Color, ColorEngine, Settings, Json, Api; g++ -std=c++17, no Arduino)"
         run: bash tests/run_tests.sh
 
   firmware-build:

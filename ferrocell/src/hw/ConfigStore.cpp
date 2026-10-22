@@ -16,6 +16,7 @@
 const char* ConfigStore::kNamespace = "ferrocell";
 const char* ConfigStore::kLedCountKey = "ledcount";
 const char* ConfigStore::kHueKey = "hue";
+const char* ConfigStore::kSaturationKey = "sat";
 const char* ConfigStore::kBrightnessKey = "bright";
 const char* ConfigStore::kModeKey = "mode";
 const char* ConfigStore::kSpeedKey = "speed";
@@ -31,6 +32,7 @@ ferrocell::Settings ConfigStore::load() {
   ferrocell::Settings s;
   s.setLedCount(prefs.getUShort(kLedCountKey, d.ledCount()));
   s.setHue(prefs.getDouble(kHueKey, d.hue()));
+  s.setSaturation(prefs.getDouble(kSaturationKey, d.saturation()));
   s.setBrightness(prefs.getDouble(kBrightnessKey, d.brightness()));
   s.setSpeed(prefs.getDouble(kSpeedKey, d.speed()));
 
@@ -45,8 +47,8 @@ ferrocell::Settings ConfigStore::load() {
 
   s = ferrocell::Settings::normalize(s);
 
-  Serial.printf("[config] loaded: leds=%u hue=%.0f bright=%.2f mode=%s speed=%.2f\n",
-                s.ledCount(), s.hue(), s.brightness(), s.mode().c_str(), s.speed());
+  Serial.printf("[config] loaded: leds=%u hue=%.0f sat=%.2f bright=%.2f mode=%s speed=%.2f\n",
+                s.ledCount(), s.hue(), s.saturation(), s.brightness(), s.mode().c_str(), s.speed());
   return s;
 }
 
@@ -61,13 +63,14 @@ bool ConfigStore::save(const ferrocell::Settings& raw) {
   bool ok = true;
   ok = prefs.putUShort(kLedCountKey, s.ledCount()) == 2 && ok;
   ok = prefs.putDouble(kHueKey, s.hue()) == 8 && ok;
+  ok = prefs.putDouble(kSaturationKey, s.saturation()) == 8 && ok;
   ok = prefs.putDouble(kBrightnessKey, s.brightness()) == 8 && ok;
   ok = prefs.putDouble(kSpeedKey, s.speed()) == 8 && ok;
   ok = prefs.putString(kModeKey, s.mode().c_str()) == s.mode().size() && ok;
   prefs.end();
 
-  Serial.printf("[config] saved: leds=%u hue=%.0f bright=%.2f mode=%s speed=%.2f (%s)\n",
-                s.ledCount(), s.hue(), s.brightness(), s.mode().c_str(), s.speed(),
+  Serial.printf("[config] saved: leds=%u hue=%.0f sat=%.2f bright=%.2f mode=%s speed=%.2f (%s)\n",
+                s.ledCount(), s.hue(), s.saturation(), s.brightness(), s.mode().c_str(), s.speed(),
                 ok ? "ok" : "FAILED");
   return ok;
 }

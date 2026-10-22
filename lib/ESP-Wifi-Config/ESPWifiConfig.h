@@ -139,7 +139,11 @@ class ESPWifiConfig
 		//void onStationConnected(const WiFiEventSoftAPModeStationConnected& evt);
 		//void onStationDisconnected(const WiFiEventSoftAPModeStationDisconnected& evt);
 		void ESP_read_settings(void);
+		// Exposed (public) so the app (WifiManager) can persist credentials the
+		// same way the library's own config page does (M5, issue #6).
+	public:
 		void ESP_save_settings(void);
+	private:
 		int wifi_scan_count = 0;
 		boolean try_wifi_connect();
 		#if BOARD_ESP==32

@@ -21,6 +21,7 @@ class ConfigStore {
   static const char* kNamespace;
   static const char* kLedCountKey;
   static const char* kHueKey;
+  static const char* kSaturationKey;
   static const char* kBrightnessKey;
   static const char* kModeKey;
   static const char* kSpeedKey;

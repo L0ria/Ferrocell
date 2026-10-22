@@ -85,6 +85,7 @@ bool ColorEngine::isKnownMode(const char* modeName) {
 }
 
 void ColorEngine::colors(double hue,
+                         double saturation,
                          double brightness,
                          std::size_t ledCount,
                          double speed,
@@ -94,6 +95,11 @@ void ColorEngine::colors(double hue,
   if (ledCount == 0) return;
   out.resize(ledCount);
 
+  // Clamp saturation into [0,1] (the Color constructor clamps too, but this
+  // keeps the math below on a known range).
+  if (saturation < 0.0) saturation = 0.0;
+  if (saturation > 1.0) saturation = 1.0;
+
   const double t = static_cast<double>(timeMs) / 1000.0;
 
   switch (mode_) {
@@ -102,7 +108,7 @@ void ColorEngine::colors(double hue,
       break;
 
     case Mode::SOLID:
-      for (std::size_t i = 0; i < ledCount; ++i) out[i] = Color(hue, 1.0, brightness);
+      for (std::size_t i = 0; i < ledCount; ++i) out[i] = Color(hue, saturation, brightness);
       break;
 
     case Mode::RAINBOW:
@@ -112,7 +118,7 @@ void ColorEngine::colors(double hue,
       for (std::size_t i = 0; i < ledCount; ++i) {
         double h = base + static_cast<double>(i) * (360.0 / static_cast<double>(ledCount));
         if (animate) h += 360.0 * speed * t;
-        out[i] = Color(mod360(h), 1.0, brightness);
+        out[i] = Color(mod360(h), saturation, brightness);
       }
       break;
     }
@@ -120,20 +126,46 @@ void ColorEngine::colors(double hue,
     case Mode::BREATHING: {
       const double factor = (1.0 - std::cos(2.0 * kPi * speed * t)) / 2.0;
       for (std::size_t i = 0; i < ledCount; ++i)
-        out[i] = Color(hue, 1.0, brightness * factor);
+        out[i] = Color(hue, saturation, brightness * factor);
       break;
     }
   }
 }
 
+// 6-arg returning form (M5): explicit saturation. The device uses the buffer
+// form; this is the value-returning twin for convenience / tests.
+std::vector<Color> ColorEngine::colors(double hue,
+                                       double saturation,
+                                       double brightness,
+                                       std::size_t ledCount,
+                                       double speed,
+                                       std::int64_t timeMs) const {
+  std::vector<Color> out;
+  colors(hue, saturation, brightness, ledCount, speed, timeMs, out);
+  return out;
+}
+
+// Convenience overload (M2): fully saturated. Keeps the existing 5-arg call
+// sites (tests) working unchanged.
 std::vector<Color> ColorEngine::colors(double hue,
                                        double brightness,
                                        std::size_t ledCount,
                                        double speed,
                                        std::int64_t timeMs) const {
   std::vector<Color> out;
-  colors(hue, brightness, ledCount, speed, timeMs, out);
+  colors(hue, 1.0, brightness, ledCount, speed, timeMs, out);
   return out;
 }
+
+// Convenience overload (M2), buffer form: fully saturated.
+void ColorEngine::colors(double hue,
+                         double brightness,
+                         std::size_t ledCount,
+                         double speed,
+                         std::int64_t timeMs,
+                         std::vector<Color>& out) const {
+  colors(hue, 1.0, brightness, ledCount, speed, timeMs, out);
+}
+
 
 }  // namespace ferrocell
