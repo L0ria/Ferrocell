@@ -2,11 +2,11 @@
 # ---------------------------------------------------------------------------
 # Ferrocell — host-side test runner (M2 issue #3, M3 issue #4, M5 issue #6).
 #
-# Builds and runs the PURE-core unit tests with the system g++ — NO Arduino
-# toolchain, NO FastLED, NO hardware. This is the same command the M6 CI
-# `core-tests` job runs.
+# Builds and runs the PURE-core unit tests (tests/unit/*.cpp) with the system
+# g++ — NO Arduino toolchain, NO FastLED, NO hardware. This is the same
+# command the CI `core-tests` job runs (job 1 of 3, issue #7).
 #
-# Test targets (each is a self-contained binary with its own main()):
+# Test targets (tests/unit/, each a self-contained binary with its own main()):
 #   core_test      Color + ColorEngine   (M2)
 #   settings_test  Settings defaults + normalize/clamping (M3)
 #   api_test       Json + Api (the JSON API contract) (M5)
@@ -46,6 +46,7 @@ TESTS=(
   "settings_test"
   "api_test"
 )
+TEST_DIR="${ROOT}/tests/unit"
 
 mkdir -p "${OUT_DIR}"
 echo "[tests] compiler : ${CXX} ($(${CXX} --version 2>/dev/null | head -1))"
@@ -55,7 +56,7 @@ for t in "${TESTS[@]}"; do
   BIN="${OUT_DIR}/${t}"
   echo "[tests] building : ${BIN}"
   "${CXX}" ${CXXFLAGS} -I "${ROOT}/ferrocell/src" \
-    "${ROOT}/tests/${t}.cpp" \
+    "${TEST_DIR}/${t}.cpp" \
     "${CORE_SRCS[@]}" \
     -o "${BIN}"
 

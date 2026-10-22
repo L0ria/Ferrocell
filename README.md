@@ -5,14 +5,15 @@ in a ferrocell (a device that visualizes magnetic fields). The ESP32 exists
 solely to control the strip's color so the field visualization can be changed
 at runtime.
 
-> Status: **M5 — web UI + JSON API** (issue #6) on top of the M4 WiFi layer
-> (issue #5), the M3 hardware layer (issue #4), the M2 pure core (issue #3)
-> and the M1 scaffold (issue #2). The firmware boots over USB-CDC, loads
-> settings (NVS; sane defaults on first boot), attaches the WS2812B strip on
-> GPIO7 via FastLED, renders frames from the `ColorEngine`, brings up the
-> WiFi layer (`WifiManager`: AP config page or STA with auto-reconnect), and
-> serves the self-contained web UI + JSON API (`UiServer`) on port 80. The
-> full test harness + CI lands in M6 (issue #7).
+> Status: **M1–M6 complete.** M6 — test harness + full CI (3 jobs) + final
+> docs (issue #7) on top of the M5 web UI + JSON API (issue #6), the M4 WiFi
+> layer (issue #5), the M3 hardware layer (issue #4), the M2 pure core
+> (issue #3) and the M1 scaffold (issue #2). The firmware boots over USB-CDC,
+> loads settings (NVS; sane defaults on first boot), attaches the WS2812B
+> strip on GPIO7 via FastLED, renders frames from the `ColorEngine`, brings
+> up the WiFi layer (`WifiManager`: AP config page or STA with
+> auto-reconnect), and serves the self-contained web UI + JSON API
+> (`UiServer`) on port 80.
 
 ## Hardware
 
@@ -51,6 +52,35 @@ FastLED**, and compiles. Re-running is a no-op for the installs.
 
 The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
 `libraries.json` (lib pins).
+
+## Usage
+
+1. **Build + flash** (one machine, USB): `./build.sh --upload` (or
+   `--port /dev/ttyACM0`).
+2. **First boot — AP mode.** With no saved WiFi the device starts an access
+   point `Ferrocell_<mac>`. Join it and open **`http://192.168.1.1/`** — the
+   web UI (color wheel, sliders, modes, presets, LED count, WiFi tab).
+   Save a network from the WiFi tab (or use the config page at
+   `http://192.168.1.1:8080/`, login **admin / pass_ESP**).
+3. **After saving — STA mode.** The device reboots, connects to your network
+   (auto-reconnects on drop), and the UI is reachable at **`http://<ip>/`**.
+   The status bar shows the mode + IP.
+4. **Reset** (UI → WiFi tab, or `POST /api/reset`) wipes the saved
+   credentials and reboots back into AP mode.
+
+## CI (3 jobs, no hardware)
+
+`.github/workflows/build.yml` runs on every PR (and on `main`):
+
+| Job | What it does | Local command |
+|---|---|---|
+| `core-tests` | **Unit (host)** — builds + runs the pure-core unit tests (`tests/unit/*.cpp`: `Color`, `ColorEngine`, `Settings`, `Json`, `Api`) with `g++ -std=c++17` | `bash tests/run_tests.sh` |
+| `ui-contract` | **UI contract (Node)** — runs the dependency-free harness against `ferrocell/data/ui.js` (endpoints, payload shapes, wheel mapping, HSV<->RGB, presets) **plus the JS<->C++ cross-check** (compiles + runs the pure-core probe) | `node tests/ui/harness.mjs` |
+| `firmware-build` | **Firmware build** — the real `./build.sh` (arduino-cli + core 3.3.12 + FastLED 3.10.8 + vendored ESP-Wifi-Config) for the S3-Zero FQBN | `./build.sh` |
+
+A PR that breaks `Color` / `ColorEngine` fails `core-tests` (and the
+cross-check); one that breaks `ui.js` fails `ui-contract`; one that breaks
+the build fails `firmware-build`.
 
 ## Core (pure, host-testable)
 
@@ -157,16 +187,19 @@ Re-run it after editing `ferrocell/data/`, then `./build.sh`.
 `UiServer` is compiled into the firmware only (verified by `firmware-build`);
 the JSON logic it delegates to is host-tested.
 
-### Running the core tests (no Arduino, no hardware)
+### Running the tests (no Arduino, no hardware)
 
 ```bash
-tests/run_tests.sh          # build + run all pure-core unit tests
-                            #   (core_test: Color + ColorEngine;
-                            #    settings_test: Settings defaults/normalize;
-                            #    api_test: Json + Api — the JSON API contract)
+tests/run_tests.sh          # job 1 — build + run all pure-core unit tests
+                            #   (tests/unit/core_test: Color + ColorEngine;
+                            #    tests/unit/settings_test: defaults/normalize;
+                            #    tests/unit/api_test: Json + Api contract)
+node tests/ui/harness.mjs   # job 2 — web-UI JS-contract harness (Node,
+                            #   zero deps) incl. the JS<->C++ cross-check
 ```
 
-This is the same command the `core-tests` CI job runs on every PR.
+These are the same commands the `core-tests` and `ui-contract` CI jobs run on
+every PR.
 
 ## Repository layout
 
@@ -196,12 +229,18 @@ This is the same command the `core-tests` CI job runs on every PR.
 ├── tools/
 │   └── make_ui_assets.py # regenerates ui_assets.h from ferrocell/data/ (M5)
 ├── tests/
-│   ├── core_test.cpp     # pure-core unit tests (Color + ColorEngine)
-│   ├── settings_test.cpp # Settings defaults + normalize/clamping (M3)
-│   ├── api_test.cpp      # Json + Api — the JSON API contract (M5)
-│   └── run_tests.sh      # host test runner (g++ -std=c++17, no Arduino)
+│   ├── unit/             # pure-core unit tests (job 1 "Unit (host)")
+│   │   ├── core_test.cpp     # Color + ColorEngine (M2)
+│   │   ├── settings_test.cpp # Settings defaults + normalize/clamping (M3)
+│   │   └── api_test.cpp      # Json + Api — the JSON API contract (M5)
+│   ├── ui/               # web-UI JS-contract harness (job 2 "UI contract")
+│   │   ├── harness.mjs       # Node, zero deps (M6) — incl. JS<->C++ cross-check
+│   │   ├── cpp_probe.cpp     # tiny pure-core probe the harness compiles/runs
+│   │   └── package.json      # metadata only (type: module; npm test)
+│   ├── run_tests.sh      # host test runner (g++ -std=c++17, no Arduino)
+│   └── README.md         # how to run both harnesses
 └── .github/workflows/
-    └── build.yml         # CI: core-tests + firmware-build
+    └── build.yml         # CI (3 jobs): core-tests + ui-contract + firmware-build
 ```
 
 ## Design notes
@@ -215,6 +254,9 @@ This is the same command the `core-tests` CI job runs on every PR.
   data line.
 - **Reproducible builds.** Core and libraries are pinned; the build is
   idempotent and runs unchanged in CI (`.github/workflows/build.yml`).
+- **3-job CI, no hardware.** `core-tests` (unit, host g++), `ui-contract`
+  (Node JS-contract harness + JS<->C++ cross-check), `firmware-build`
+  (arduino-cli) — see "CI" above.
 
 ## Roadmap
 
@@ -224,5 +266,5 @@ This is the same command the `core-tests` CI job runs on every PR.
 | M2 | #3 | Pure core: `Color` + `ColorEngine` (host-testable, no Arduino deps) |
 | M3 | #4 | Hardware layer: `LedController` + `ConfigStore` (this PR) |
 | M4 | #5 | WiFi: `WifiManager` (AP + STA) |
-| M5 | #6 | Web UI (color wheel) + JSON API: `UiServer` (this PR) |
-| M6 | #7 | Test harness + full CI (3 jobs) + docs |
+| M5 | #6 | Web UI (color wheel) + JSON API: `UiServer` |
+| M6 | #7 | Test harness + full CI (3 jobs) + final docs (this PR) — **done** |
