@@ -25,6 +25,7 @@
   <nav class="tabs" role="tablist">
     <button id="tabLight" class="active" role="tab" aria-selected="true">Light</button>
     <button id="tabWifi" role="tab" aria-selected="false">WiFi</button>
+    <button id="tabUpdate" role="tab" aria-selected="false">Update</button>
   </nav>
 
   <!-- ============================ LIGHT TAB ============================ -->
@@ -113,6 +114,26 @@
         <button class="btn danger" id="reset">Reset WiFi</button>
       </div>
       <div class="hint">Reset clears the saved WiFi credentials and reboots into AP mode.</div>
+    </div>
+  </section>
+
+  <!-- ============================ UPDATE TAB ============================ -->
+  <section id="paneUpdate" class="hidden" role="tabpanel">
+    <div class="card">
+      <h2>Firmware (OTA)</h2>
+      <div class="field">
+        <div class="label"><span>Current version</span><span class="val" id="fwVer">&mdash;</span></div>
+      </div>
+      <button class="btn primary" id="otaOpen">Open OTA portal</button>
+      <div class="hint">
+        The portal at <code>/update</code> (served on the same port, in both AP and
+        STA mode) lets you flash a new <code>.bin</code> from the browser — no USB
+        cable. Pick the <b>application</b> image (<code>build/ferrocell.ino.bin</code>,
+        <i>not</i> the <code>.merged.bin</code>), then tap <i>Upload</i>. The device
+        reboots into the new firmware automatically a moment after a successful
+        upload, and the saved WiFi config is kept (it lives in NVS, which OTA
+        never touches).
+      </div>
     </div>
   </section>
 

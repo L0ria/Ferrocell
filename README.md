@@ -45,8 +45,10 @@ FastLED**, and compiles. Re-running is a no-op for the installs.
 | What | Value |
 |---|---|
 | Core | `esp32:esp32` **3.3.12** |
-| FQBN | `esp32:esp32:waveshare_esp32_s3_zero` |
+| FQBN | `esp32:esp32:waveshare_esp32_s3_zero:PartitionScheme=otanofs` |
+| Partition | `otanofs` — two **1.94 MiB** OTA slots, no SPIFFS (issue #16; we mount no runtime FS) |
 | FastLED | **3.10.8** |
+| ElegantOTA | **4.0.0** (OTA over WiFi, issue #16) |
 | ESP-Wifi-Config | **2.2.6** (vendored in `lib/ESP-Wifi-Config`) |
 | AP IP | `192.168.1.1` (library default) — config page at `http://192.168.1.1:8080/` |
 
@@ -67,6 +69,12 @@ The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
    The status bar shows the mode + IP.
 4. **Reset** (UI → WiFi tab, or `POST /api/reset`) wipes the saved
    credentials and reboots back into AP mode.
+5. **Update over WiFi (OTA, issue #16).** Open **`http://<ip>/update`** (STA)
+   or **`http://192.168.1.1/update`** (AP) — or the UI's **Update** tab — and
+   upload the application image (`build/ferrocell.ino.bin`, *not* the
+   `.merged.bin`). The device reboots into the new firmware a moment after a
+   successful upload; the saved WiFi config is kept (it lives in NVS, which
+   OTA never touches).
 
 ## CI (3 jobs, no hardware)
 
@@ -76,7 +84,7 @@ The same pins are recorded in `ferrocell/sketch.yaml` (IDE 2.x) and
 |---|---|---|
 | `core-tests` | **Unit (host)** — builds + runs the pure-core unit tests (`tests/unit/*.cpp`: `Color`, `ColorEngine`, `Settings`, `Json`, `Api`) with `g++ -std=c++17` | `bash tests/run_tests.sh` |
 | `ui-contract` | **UI contract (Node)** — runs the dependency-free harness against `ferrocell/data/ui.js` (endpoints, payload shapes, wheel mapping, HSV<->RGB, presets) **plus the JS<->C++ cross-check** (compiles + runs the pure-core probe) | `node tests/ui/harness.mjs` |
-| `firmware-build` | **Firmware build** — the real `./build.sh` (arduino-cli + core 3.3.12 + FastLED 3.10.8 + vendored ESP-Wifi-Config) for the S3-Zero FQBN | `./build.sh` |
+| `firmware-build` | **Firmware build** — the real `./build.sh` (arduino-cli + core 3.3.12 + FastLED 3.10.8 + ElegantOTA 4.0.0 + vendored ESP-Wifi-Config) for the S3-Zero FQBN (`PartitionScheme=otanofs`) | `./build.sh` |
 
 A PR that breaks `Color` / `ColorEngine` fails `core-tests` (and the
 cross-check); one that breaks `ui.js` fails `ui-contract`; one that breaks
@@ -205,6 +213,30 @@ Re-run it after editing `ferrocell/data/`, then `./build.sh`.
 `UiServer` is compiled into the firmware only (verified by `firmware-build`);
 the JSON logic it delegates to is host-tested.
 
+### OTA over WiFi (issue #16, firmware-only)
+
+`ElegantOTA` (v4.0.0) is attached to the **same** `WebServer` the UI uses
+(via `UiServer::rawServer()`), so its `/update` portal + `/ota/*` routes share
+**port 80** in **both** AP and STA mode — no new port, no collision with the
+M4 config page on 8080. `UiServer` remains the only class that owns the
+server; the entrypoint just hands `rawServer()` to the library.
+
+| What | Value |
+|---|---|
+| Portal | `http://<ip>/update` (STA) · `http://192.168.1.1/update` (AP) — also the UI's **Update** tab |
+| Routes | `GET /update`, `GET /ota/metadata`, `GET /ota/start`, `POST /ota/upload` |
+| Auth | open for v1 (local network; HTTP Basic auth is issue #17) |
+| Auto-reboot | on — the device reboots into the new app ~2 s after a successful upload |
+| Config retention | the saved WiFi config lives in **NVS**, which OTA never touches — it survives every update |
+| Partition | `PartitionScheme=otanofs` → two 1.94 MiB OTA slots (≈836 KB headroom each); we mount no filesystem at runtime, so the `default` scheme's 1.5 MB SPIFFS was dead weight |
+
+**One-time note (issue #16, A4):** the first firmware under `otanofs` must be
+flashed **over USB** (`./build.sh --upload`) — a USB flash writes `app0`/factory
+and replaces the old `default` layout. Every update after that can be OTA.
+
+`ElegantOTA` is compiled into the firmware only (verified by `firmware-build`);
+its route table is asserted by the `ui-contract` harness (section 9).
+
 ### Running the tests (no Arduino, no hardware)
 
 ```bash
@@ -223,7 +255,7 @@ every PR.
 
 ```
 ├── build.sh              # idempotent arduino-cli build/flash (single source of truth)
-├── libraries.json        # external library pins (FastLED, ESP-Wifi-Config)
+├── libraries.json        # external library pins (FastLED, ElegantOTA, ESP-Wifi-Config)
 ├── ferrocell/
 │   ├── ferrocell.ino     # thin setup()/loop() entrypoint (M1 boot sketch)
 │   ├── sketch.yaml       # IDE 2.x project record (FQBN + core + lib pins)
@@ -279,6 +311,9 @@ every PR.
   optimistically and coalesces the network + flash-write into one request per
   drag (debounced `/api/set` + deferred NVS save + a `showIfChanged()` dirty
   check that skips the blocking `FastLED.show()` on unchanged frames).
+- **OTA over WiFi (issue #16).** `ElegantOTA` (4.0.0) shares the UI's
+  `WebServer` (port 80, STA + AP) for the `/update` portal; `otanofs` gives two
+  1.94 MiB OTA slots; the saved WiFi config (NVS) is untouched by an update.
 
 ## Roadmap
 
@@ -290,3 +325,4 @@ every PR.
 | M4 | #5 | WiFi: `WifiManager` (AP + STA) |
 | M5 | #6 | Web UI (color wheel) + JSON API: `UiServer` |
 | M6 | #7 | Test harness + full CI (3 jobs) + final docs (this PR) — **done** |
+| — | #16 | OTA over WiFi (`ElegantOTA` 4.0.0 + `otanofs` partition scheme) — **done** |
