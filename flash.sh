@@ -106,7 +106,6 @@ log "port: ${PORT}  speed: ${SPEED}  fqbn: ${FQBN}"
   --fqbn "${FQBN}" \
   -p "${PORT}" \
   --upload-property "upload.speed=${SPEED}" \
-  --libraries "${SCRIPT_DIR}/lib" \
   --input-dir "${OUT_DIR}" \
   "${SKETCH_DIR}"
 
