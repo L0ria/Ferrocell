@@ -322,7 +322,7 @@ if [ "${UPLOAD}" -eq 1 ]; then
     [ -n "${PORT}" ] || die "no ESP32 detected — pass --port /dev/ttyACM0"
   fi
   log "flashing to ${PORT} …"
-  "${ARDUINO_CLI}" upload --fqbn "${FQBN}" -p "${PORT}" --libraries "${SCRIPT_DIR}/lib" --input-dir "${OUT_DIR}" "${SKETCH_DIR}"
+  "${ARDUINO_CLI}" upload --fqbn "${FQBN}" -p "${PORT}" --input-dir "${OUT_DIR}" "${SKETCH_DIR}"
   log "flash complete"
 fi
 
