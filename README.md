@@ -209,9 +209,16 @@ and host-tested by `api_test`):
 mobile-first, dark, thumb-friendly, and self-contained (no CDN). It has a
 **color wheel** (hue + saturation), brightness + speed sliders, mode chips
 (Solid / Rainbow / Breathing / Gradient / Off), one-tap presets, an LED-count
-stepper (saves + reboots), and a **WiFi tab** (scan / save / reboot / reset).
+stepper, and a **WiFi tab** (scan / save / reboot / reset).
 The pure helpers in `ui.js` (`FerrocellUI.pure`) are importable by Node so the
 M6 harness can assert the JS↔C++ contract.
+
+**LED count (issue #27):** the `−`/`+` buttons (or typing a value) only change
+the displayed count **locally** — no network, no reboot — so it can be stepped
+repeatedly. **Save** (or Enter in the field) is the only commit: exactly one
+`POST /api/set`, and the device reboots **once** (only when the value actually
+changed) to re-initialize the strip. The stepper clamps to 1..512
+(`Settings.h`), host-tested in the M6 harness (section 11).
 
 **Responsiveness (issue #14):** dragging the color wheel / sliders used to
 fire one `POST /api/set` per pointer event (60-120/sec), and the server

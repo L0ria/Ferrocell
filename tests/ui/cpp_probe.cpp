@@ -63,6 +63,13 @@ int main() {
                 d.brightness(), d.mode().c_str(), d.speed());
   line("defaults", buf);
 
+  // --- 2b. Canonical ledCount bounds (vs JS pure.stepLedCount clamps) ------
+  char bnd[32];
+  std::snprintf(bnd, sizeof(bnd), "%u,%u",
+                static_cast<unsigned>(ferrocell::settings::kMinLedCount),
+                static_cast<unsigned>(ferrocell::settings::kMaxLedCount));
+  line("bounds", bnd);
+
   // --- 3. applySet result flags (vs JS buildSetPayload + knownSetFields) --
   // Each case: (label, json body) -> print ok|error|rebooting.
   struct Case {

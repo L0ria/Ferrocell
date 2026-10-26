@@ -59,6 +59,17 @@
     clamp01: function (x) { return pure.clamp(x, 0, 1); },
     wrapHue: function (h) { h = h % 360; if (h < 0) h += 360; return h; },
 
+    // LED-count stepper (issue #27): the −/+ buttons step the DISPLAYED value
+    // locally (no network, no reboot); Save is the only commit path. Clamp to
+    // the canonical range (mirrors ferrocell/src/core/Settings.h
+    // settings::kMinLedCount/kMaxLedCount). Non-numeric input -> range min.
+    stepLedCount: function (current, delta) {
+      var n = Math.round(Number(current));
+      if (!isFinite(n)) n = pure.ranges.ledCount.min;
+      n += Math.round(Number(delta) || 0);
+      return pure.clamp(n, pure.ranges.ledCount.min, pure.ranges.ledCount.max);
+    },
+
     // HSV (h:0..360, s:0..1, v:0..1) -> {r,g,b} each 0..255.
     // Mirrors ferrocell/src/core/Color.cpp hsvToRgb exactly.
     hsvToRgb: function (h, s, v) {
@@ -235,6 +246,7 @@
         var self = this;
         return api.state().then(function (doc) {
           self.state = pure.parseState(doc);
+          self.ledCountCommitted = self.state.ledCount;
           self.render();
         }).catch(function (e) { self.toast("state error: " + e.message, "err"); });
       },
@@ -254,7 +266,7 @@
         this.el.brightVal.textContent = Math.round(st.brightness * 100) + "%";
         this.el.speed.value = st.speed;
         this.el.speedVal.textContent = st.speed.toFixed(1) + "x";
-        this.el.ledCount.textContent = st.ledCount;
+        this.el.ledCount.value = st.ledCount;   // issue #27: editable input (Save commits)
         this.setActiveMode(st.mode);
         this.renderStatus(st);
         if (this.el.fw) this.el.fw.textContent = "fw " + st.fw;
@@ -324,10 +336,37 @@
         var self = this;
         clearTimeout(this._setTimer);
         if (delay <= 0) {
-          this._flushSet();
-        } else {
-          this._setTimer = setTimeout(function () { self._flushSet(); }, delay);
+          return this._flushSet();
         }
+        this._setTimer = setTimeout(function () { self._flushSet(); }, delay);
+        return Promise.resolve();
+      },
+
+      // Local-only update (issue #27): update the optimistic state + render,
+      // WITHOUT touching _pending / the debounce timer / the network. Used by
+      // the LED-count −/+ stepper so N taps = N local steps, zero requests.
+      pushSetLocal: function (partial) {
+        this.applyLocal(partial);
+      },
+
+      // Commit the displayed LED count (issue #27): the ONLY network path for
+      // ledCount. No-op (no request, no reboot) when the value is unchanged;
+      // otherwise exactly one /api/set (the server reboots iff it changed).
+      saveLeds: function () {
+        var el = this.el.ledCount;
+        var n = pure.stepLedCount(el.value, 0);
+        if (n === this.ledCountCommitted) {
+          this.toast("No change to save", "");
+          return;
+        }
+        el.value = n;
+        this.toast("Saving \u2014 rebooting\u2026", "ok");
+        this.el.saveLeds.disabled = true;
+        var self = this;
+        this.pushSet({ ledCount: n }).then(function () {
+          self.ledCountCommitted = n;
+          self.el.saveLeds.disabled = false;
+        });
       },
 
       // Optimistic local update: reflect the change in the UI immediately so
@@ -348,11 +387,11 @@
       // sends in-range values, so there is nothing to re-adopt from the server).
       _flushSet: function () {
         var self = this;
-        if (!this._pending) return;
+        if (!this._pending) return Promise.resolve();
         var payload = this._pending;
-        if (!Object.keys(payload).length) return;
+        if (!Object.keys(payload).length) return Promise.resolve();
         this._pending = {};
-        api.set(payload).then(function (doc) {
+        return api.set(payload).then(function (doc) {
           if (doc && doc.ok) {
             if (doc.rebooting) { self.toast("Saving \u2014 rebooting\u2026", "ok"); }
           } else {
@@ -476,18 +515,19 @@
           b.addEventListener("click", function () { self.pushSet({ mode: b.getAttribute("data-mode") }); });
         });
 
-        // LED count stepper.
+        // LED count stepper (issue #27): −/+ step the displayed value LOCALLY
+        // (no network, no reboot) so it can be tapped repeatedly; typing works
+        // too. Only Save (or Enter in the field) commits — exactly one
+        // /api/set, one reboot, iff the value changed.
         this.el.ledMinus.addEventListener("click", function () {
-          var n = Math.max(1, (self.state ? self.state.ledCount : 1) - 1);
-          self.el.ledCount.textContent = n;
+          self.pushSetLocal({ ledCount: pure.stepLedCount(self.el.ledCount.value, -1) });
         });
         this.el.ledPlus.addEventListener("click", function () {
-          var n = Math.min(512, (self.state ? self.state.ledCount : 1) + 1);
-          self.el.ledCount.textContent = n;
+          self.pushSetLocal({ ledCount: pure.stepLedCount(self.el.ledCount.value, 1) });
         });
-        this.el.saveLeds.addEventListener("click", function () {
-          var n = Number(self.el.ledCount.textContent);
-          self.pushSet({ ledCount: n });
+        this.el.saveLeds.addEventListener("click", function () { self.saveLeds(); });
+        this.el.ledCount.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); self.saveLeds(); }
         });
 
         // Presets.
