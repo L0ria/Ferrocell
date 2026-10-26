@@ -78,10 +78,10 @@
       <h2>LED count</h2>
       <div class="stepper">
         <button id="ledMinus" aria-label="Decrease LED count">&minus;</button>
-        <div class="count" id="ledCount">30</div>
+        <input class="count" id="ledCount" type="number" min="1" max="512" step="1" inputmode="numeric" value="30" aria-label="LED count">
         <button id="ledPlus" aria-label="Increase LED count">+</button>
       </div>
-      <div class="hint">Changing the LED count <b>saves and reboots</b> the device to re-initialize the strip.</div>
+      <div class="hint">&minus;/+ and typing only change the value <b>locally</b> (no reboot). <b>Save</b> (or Enter) commits it &mdash; the device saves and <b>reboots once</b> to re-initialize the strip.</div>
       <button class="btn primary" id="saveLeds">Save LED count</button>
     </div>
   </section>

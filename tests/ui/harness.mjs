@@ -86,6 +86,7 @@ const EXPECTED_PURE = [
   "knownSetFields", "buildSetPayload", "parseState",
   "kDebounceMs", "debounceMs",
   "otaRoutes", "otaPortalPath",
+  "stepLedCount",
 ];
 for (const k of EXPECTED_PURE) check(k in pure, `pure.${k} exists`);
 eq(pure.knownModes.length, 5, "knownModes has 5 entries");
@@ -260,6 +261,7 @@ try {
   const hsv = new Map();
   const set = new Map();
   let defaults = "";
+  let bounds = "";
   let probeOk = false;
   for (const line of out.split("\n")) {
     if (!line) continue;
@@ -268,10 +270,11 @@ try {
     const parts = line.split("\t");
     if (parts[0] === "hsv") hsv.set(parts[1], parts[2]);
     else if (parts[0] === "defaults") defaults = parts[1];
+    else if (parts[0] === "bounds") bounds = parts[1];
     else if (parts[0] === "set") set.set(parts[1], parts[2]);
   }
   check(probeOk, "probe ran to completion (PROBE_OK)");
-  cpp = { hsv, defaults, set };
+  cpp = { hsv, defaults, set, bounds };
 } catch (e) {
   if (e && e.status !== undefined) {
     console.log(`  SKIP [cross-check] C++ probe failed to build/run: ${String(e.message).split("\n")[0]}`);
@@ -388,6 +391,30 @@ eq(pure.hsvToRgb(120, 0.8, 0.7).g, 179, "readout SAMPLE state -> g=179 (matches 
 eq(pure.hsvToRgb(0, 1, 0).r, 0, "readout off -> r=0");
 eq(pure.hsvToRgb(0, 1, 0).g, 0, "readout off -> g=0");
 eq(pure.hsvToRgb(0, 1, 0).b, 0, "readout off -> b=0");
+
+// ===========================================================================
+section("11. LED-count stepper (issue #27 — N taps local, one Save = one reboot)");
+check(typeof pure.stepLedCount === "function", "pure.stepLedCount is a function");
+eq(pure.stepLedCount(30, 1), 31, "step 30 + 1 -> 31");
+eq(pure.stepLedCount(31, -1), 30, "step 31 - 1 -> 30");
+eq(pure.stepLedCount(512, 1), 512, "clamps at max (512 + 1 -> 512)");
+eq(pure.stepLedCount(1, -1), 1, "clamps at min (1 - 1 -> 1)");
+eq(pure.stepLedCount(500, 10), 510, "multi-step +10");
+eq(pure.stepLedCount(10, -100), 1, "overshoot below min clamps to 1");
+eq(pure.stepLedCount(512, 0), 512, "delta 0 is identity (used as the Save clamp)");
+eq(pure.stepLedCount("x", 1), 2, "non-numeric current -> range min, then step");
+eq(pure.stepLedCount(29.6, 1), 31, "non-integer current rounds first");
+eq(pure.stepLedCount(0, 0), 1, "out-of-range value clamps to min on Save");
+eq(pure.stepLedCount(9999, 0), 512, "out-of-range value clamps to max on Save");
+// The clamp bounds must match the C++ canonical bounds (Settings.h) — the
+// JS side must never send a value the server would re-clamp.
+if (cpp && cpp.bounds) {
+  const [bmin, bmax] = cpp.bounds.split(",").map(Number);
+  eq(pure.ranges.ledCount.min, bmin, "JS range min == C++ settings::kMinLedCount");
+  eq(pure.ranges.ledCount.max, bmax, "JS range max == C++ settings::kMaxLedCount");
+  eq(pure.stepLedCount(0, 0), bmin, "stepLedCount clamp floor == C++ kMinLedCount");
+  eq(pure.stepLedCount(99999, 0), bmax, "stepLedCount clamp ceiling == C++ kMaxLedCount");
+}
 
 // ===========================================================================
 console.log("");

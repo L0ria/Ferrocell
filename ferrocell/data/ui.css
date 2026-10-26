@@ -164,7 +164,13 @@ input[type="range"]::-moz-range-thumb {
   width: 52px; height: 52px; border-radius: 12px; border: 1px solid var(--border);
   background: var(--panel-2); color: var(--text); font-size: 26px; font-weight: 700; cursor: pointer;
 }
-.stepper .count { flex: 1; text-align: center; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+/.stepper .count { flex: 1; text-align: center; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stepper .count {
+  min-height: 52px; padding: 0 6px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); -moz-appearance: textfield; appearance: textfield;
+}
+.stepper .count::-webkit-outer-spin-button, .stepper .count::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper .count:focus { outline: none; border-color: var(--accent); }
 .hint { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
 .hint b { color: var(--warn); }
 
