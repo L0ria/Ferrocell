@@ -10,7 +10,7 @@ Pure-core unit tests, each a self-contained binary with its own `main()`:
 
 `run_tests.sh` builds them with the system `g++ -std=c++17` and runs them;
 exits non-zero on any failure (CI-friendly). This is the command the
-`core-tests` CI job (job 1 of 3) runs.
+`core-tests` CI job (job 1 of 4) runs.
 
 ```bash
 tests/run_tests.sh          # build + run the pure-core unit tests
@@ -34,4 +34,4 @@ tests/run_tests.sh          # build + run the pure-core unit tests
 node tests/ui/harness.mjs   # run the web-UI JS-contract harness
 ```
 
-This is the command the `ui-contract` CI job (job 2 of 3) runs.
+This is the command the `ui-contract` CI job (job 2 of 4) runs.
